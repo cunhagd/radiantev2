@@ -1,0 +1,6 @@
+boto3
+pymupdf
+openai
+python-dotenv
+reportlab
+requests-aws4auth

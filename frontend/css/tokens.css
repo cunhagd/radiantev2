@@ -1,0 +1,41 @@
+/* ============================================================
+   Radiante v2 — Design Tokens
+   Variaveis CSS, cores, sombras, bordas, gradientes
+   ============================================================ */
+
+:root[theme="light"] {
+  --bg-main: #f0f4f9;
+  --bg-surface: #ffffff;
+  --bg-surface-variant: #f3f6fc;
+
+  --text-primary: #1f1f1f;
+  --text-secondary: #474747;
+  --text-muted: #757575;
+
+  --accent-blue: #0b57d0;
+  --accent-purple: #a142f4;
+
+  --border-subtle: #e3e3e3;
+  --input-placeholder: #757575;
+
+  --success: #146c2e;
+  --success-subtle: #e6f4ea;
+  --info: #0b57d0;
+  --info-subtle: #e8f0fe;
+  --warning: #b06000;
+  --warning-subtle: #fef7e0;
+  --danger: #b3261e;
+  --danger-subtle: #fce8e6;
+
+  --shadow-sm: 0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px 0 rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.04), 0 2px 4px -1px rgba(0,0,0,0.02);
+  --shadow-lg: 0 10px 30px -5px rgba(0, 0, 0, 0.03), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+
+  --radius-sm: 0.5rem;
+  --radius-md: 1.0rem;
+  --radius-lg: 1.75rem;
+  --radius-pill: 9999px;
+
+  --gemini-glow: linear-gradient(45deg, #4285f4 0%, #9b51e0 33%, #e91e63 66%, #fbbc05 100%);
+  --gemini-glow-soft: linear-gradient(135deg, rgba(116, 103, 239, 0.12) 0%, rgba(194, 177, 255, 0.08) 50%, rgba(255, 117, 151, 0.04) 100%);
+}

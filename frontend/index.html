@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radiante - Análise Jurídica</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500&family=Google+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- CSS Modules -->
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <h1>Radiante</h1>
+      <div class="brand-meta">
+        <span class="tagline">Análise Jurídica com IA</span>
+        <span class="separator">•</span>
+        <span class="subtitle">Desenvolvido por eMaster</span>
+      </div>
+    </div>
+
+    <div class="actions-group">
+      <div class="actions">
+        <input type="file" id="upload-input" multiple style="display: none;">
+        <button class="btn btn-upload" id="btn-upload">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+          <span>Upload</span>
+        </button>
+        <button class="btn" id="btn-once" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          <span>1x</span>
+        </button>
+        <button class="btn btn-primary" id="btn-ten" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.886H3.894l4.948 3.596L6.93 18.368 12 14.772l5.07 3.596-1.912-5.886 4.948-3.596h-6.194L12 3Z"/></svg>
+          <span>10x</span>
+        </button>
+        <button class="btn btn-clear" id="btn-clear" title="Limpar todos os dados">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+        </button>
+      </div>
+      <div id="upload-status" class="status-text"></div>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- Metadados -->
+    <div class="card">
+      <div class="card-header">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+        <div class="card-header-content">
+          <h2 class="card-title">Dados do Processo</h2>
+          <p class="card-description">Informações principais extraídas dos documentos</p>
+        </div>
+      </div>
+      <div class="meta-grid">
+        <div class="meta-item"><span class="meta-label">Processo</span><span class="meta-value" id="meta-processo">—</span></div>
+        <div class="meta-item"><span class="meta-label">Autor</span><span class="meta-value" id="meta-autor">—</span></div>
+        <div class="meta-item"><span class="meta-label">Advogado</span><span class="meta-value" id="meta-advogado">—</span></div>
+        <div class="meta-item"><span class="meta-label">Reclamada</span><span class="meta-value" id="meta-reclamada">—</span></div>
+        <div class="meta-item"><span class="meta-label">Tomadora</span><span class="meta-value" id="meta-tomadora">—</span></div>
+        <div class="meta-item"><span class="meta-label">Juízo</span><span class="meta-value" id="meta-juizo">—</span></div>
+        <div class="meta-item"><span class="meta-label">Localidade</span><span class="meta-value" id="meta-localidade">—</span></div>
+        <div class="meta-item"><span class="meta-label">Início</span><span class="meta-value" id="meta-inicio">—</span></div>
+        <div class="meta-item"><span class="meta-label">Valor da Causa</span><span class="meta-value" id="meta-valor-causa">—</span></div>
+      </div>
+    </div>
+
+    <!-- Cifras -->
+    <div class="card">
+      <div class="card-header">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <div class="card-header-content">
+          <h2 class="card-title">Provisão de Cifras</h2>
+          <p class="card-description">Valores calculados com base em análise jurídica</p>
+        </div>
+      </div>
+
+      <div id="cifras-fluent-list" class="cifras-list">
+        <div class="empty-state">
+          Nenhum dado. Inicie uma análise.
+        </div>
+      </div>
+
+      <div class="kpi-footer">
+        <span class="kpi-label">Total Estimado</span>
+        <span class="kpi-value" id="kpi-total">R$ 0,00</span>
+      </div>
+      <div class="download-row">
+        <a href="#" download class="btn btn-download" id="download-pdf-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          Baixar Relatório PDF
+        </a>
+      </div>
+      <div class="audit-section">
+        <div class="audit-toggle" id="audit-toggle">
+          <svg id="audit-arrow" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          Ver Relatório de Auditoria
+        </div>
+        <div class="audit-body" id="audit-content">Carregando...</div>
+      </div>
+    </div>
+
+    <!-- Metricas -->
+    <div class="card" id="observability-card" style="display: none;">
+      <div class="card-header">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"/><path d="M14 19l7-7-7-7"/></svg>
+        <div class="card-header-content">
+          <h2 class="card-title">Métricas de Uso</h2>
+          <p class="card-description">Observabilidade de custos e tokens</p>
+        </div>
+      </div>
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-item">
+            <span class="metric-label">Custo Total</span>
+            <span class="metric-value highlight" id="metrics-cost-total">$0.00</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-item">
+            <span class="metric-label">Tokens Entrada</span>
+            <span class="metric-value" id="metrics-prompt-tokens">0</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-item">
+            <span class="metric-label">Tokens em Cache</span>
+            <span class="metric-value" id="metrics-cache-tokens">0</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-item">
+            <span class="metric-label">Tokens Saída</span>
+            <span class="metric-value" id="metrics-completion-tokens">0</span>
+          </div>
+        </div>
+      </div>
+      <div id="runs-observability-container" style="display:none;margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--border-subtle)">
+        <table style="font-size:0.875rem">
+          <thead>
+            <tr>
+              <th style="padding:0.75rem 1rem">Rodada</th>
+              <th style="padding:0.75rem 1rem">Entrada</th>
+              <th style="padding:0.75rem 1rem">Cache</th>
+              <th style="padding:0.75rem 1rem">Saída</th>
+              <th style="padding:0.75rem 1rem">Custo (USD)</th>
+            </tr>
+          </thead>
+          <tbody id="runs-observability-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Overlay — Material3 Design -->
+  <div class="loading-overlay" id="loading-overlay">
+    <div class="loading-ambient"></div>
+    <div class="loading-card" id="loading-card">
+      <!-- Cabecalho -->
+      <div class="loading-header">
+        <div class="loading-header-icon" id="loading-header-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </div>
+        <div class="loading-header-text">
+          <div class="loading-title" id="loading-title">Analisando documentos...</div>
+          <div class="loading-subtitle" id="loading-subtitle">Processo juridico em andamento</div>
+        </div>
+        <div class="loading-timer-badge" id="loading-timer-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <span id="loading-timer">00:00</span>
+        </div>
+      </div>
+
+      <!-- Timeline (sempre visivel em ambos modos) -->
+      <div id="timeline-container">
+        <div class="m3-timeline" id="m3-timeline"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Confirmacao de Limpeza -->
+  <div class="modal-overlay" id="clear-modal" style="display: none;">
+    <div class="modal-content alert-dialog">
+      <div class="clear-modal-header">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+        <div class="card-header-content">
+          <h2 class="card-title">Limpar todos os dados?</h2>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p>Isso excluirá permanentemente todos os arquivos, análises e dados do projeto. Esta ação não poderá ser desfeita.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-danger" id="modal-confirm-clear">Limpar tudo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS Modules (ordem importa!) -->
+  <script src="js/state.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/cifras.js"></script>
+  <script src="js/metrics.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/loading.js"></script>
+
+  <!-- Initialization script -->
+  <script>
+    // Render all data (metadados + cifras + metricas)
+    window.renderAll = function (data) {
+      if (!data || Object.keys(data).length === 0 || !data.cifras) {
+        console.log('[FRONTEND] Aguardando dados consolidados para renderizacao...');
+        return;
+      }
+
+      // Tenta determinar se veio do modo 10x ou once
+      var isTenMode = data.total_runs !== undefined || data.valor_total_estimado === undefined;
+      var pdfLink = isTenMode
+        ? API.BASE + '/data/relatorio_consolidado_10x.pdf'
+        : API.BASE + '/data/relatorio_consolidado.pdf';
+      document.getElementById('download-pdf-btn').href = pdfLink;
+
+      Cifras.renderMetadata(data);
+      Cifras.renderCifras(data);
+      Metrics.renderMetrics(data);
+    };
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function () {
+      // Upload
+      document.getElementById('btn-upload').addEventListener('click', function () {
+        document.getElementById('upload-input').click();
+      });
+      document.getElementById('upload-input').addEventListener('change', function () {
+        UI.handleFileUpload(this);
+      });
+
+      // Analise
+      document.getElementById('btn-once').addEventListener('click', function () {
+        Loading.runAnalysis('once');
+      });
+      document.getElementById('btn-ten').addEventListener('click', function () {
+        Loading.runAnalysis('ten');
+      });
+
+      // Clear modal
+      document.getElementById('btn-clear').addEventListener('click', function () {
+        UI.showClearModal();
+      });
+      document.getElementById('modal-cancel').addEventListener('click', function () {
+        UI.closeClearModal();
+      });
+      document.getElementById('modal-confirm-clear').addEventListener('click', function () {
+        UI.confirmClearAll();
+      });
+
+      // Audit toggle
+      document.getElementById('audit-toggle').addEventListener('click', function () {
+        UI.toggleAuditLog();
+      });
+
+      // Load data on startup
+      API.loadLastResult();
+      API.loadAuditLog();
+    });
+  </script>
+
+</body>
+</html>

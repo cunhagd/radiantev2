@@ -78,3 +78,16 @@ O usuário, após executar uma análise (modo 1x ou 10x), deseja baixar o relat�
 - O design segue a paleta Material Design 3 já utilizada no frontend: azul primário #4285f4, tons de superfície (#f8f9fa, #e8eaed), bordas sutis (#dadce0).
 - Fontes Helvetica e Courier estão disponíveis em qualquer ambiente onde o ReportLab roda (são fontes padrão).
 - O PDF é gerado localmente na pasta `data/` e pode conter de 1 a N páginas dependendo do volume de conteúdo.
+
+---
+
+## Changelog (pós-merge)
+
+### 2026-06-29 — Hotfix: Quebra de conteúdo extenso entre páginas (#flowable-too-large)
+
+**Problema**: O erro `Flowable <Table> too large on page` ocorria quando o conteúdo de uma etapa ultrapassava a altura de uma página. Isso acontecia porque `_make_etapa_block()` usava uma `Table` aninhada, que o ReportLab **não quebra entre páginas**.
+
+**Solução**: Substituiu-se a `Table` aninhada por aplicação direta de `backColor` em cada `Paragraph` individual. Os elementos do bloco são inseridos diretamente na lista de flowables, permitindo que o ReportLab quebre o conteúdo naturalmente entre páginas.
+
+**Arquivo**: `backend/pdf_generator.py` — função `_make_etapa_block()` refatorada.
+**Testes**: 73/73 pytest passando. Validação manual com 30 rubricas na Etapa 2 confirmou quebra correta entre páginas sem erro.

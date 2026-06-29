@@ -97,21 +97,48 @@ def _make_page_callback(total_pages: int):
 
 
 def _make_etapa_block(title: str, body: list, is_odd: bool) -> list:
-    """Cria bloco visual com fundo colorido para uma etapa."""
+    """Cria blocos de etapa com fundo colorido, quebrando entre paginas.
+
+    Em vez de uma unica Table aninhada (que nao quebra paginas), aplica
+    fundo colorido em cada elemento individualmente via backColor.
+    """
     if not body:
         return []
     bg = C_SURFACE_2 if is_odd else C_SURFACE_1
-    inner = [Paragraph(title, H2_STYLE)] + body
-    block = Table([[inner]], colWidths=[PAGE_W])
-    block.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), bg),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-        ("LEFTPADDING", (0, 0), (-1, -1), 12),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-    return [block, Spacer(1, 10)]
+
+    result: list = []
+
+    # Titulo com fundo
+    result.append(Paragraph(title, ParagraphStyle(
+        "EtapaTitle",
+        fontName="Helvetica-Bold", fontSize=12, leading=15,
+        textColor=C_PRIMARY, spaceAfter=6, spaceBefore=4,
+        backColor=bg,
+    )))
+
+    for el in body:
+        if isinstance(el, Paragraph):
+            # Clona estilo com backColor
+            p_style = ParagraphStyle(
+                "EB",
+                fontName=el.style.fontName,
+                fontSize=el.style.fontSize,
+                leading=el.style.leading,
+                textColor=el.style.textColor,
+                spaceAfter=el.style.spaceAfter,
+                spaceBefore=el.style.spaceBefore,
+                leftIndent=el.style.leftIndent,
+                rightIndent=el.style.rightIndent,
+                backColor=bg,
+            )
+            result.append(Paragraph(el.text, p_style))
+        else:
+            result.append(el)
+
+    # Espacamento final
+    result.append(Spacer(1, 8))
+
+    return result
 
 
 def _make_callout(text: str) -> Table:

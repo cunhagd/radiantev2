@@ -325,4 +325,9 @@ window.Loading = {};
 
   Loading.runAnalysis = runAnalysis;
   Loading.cleanupLoading = cleanupLoading;
+  Loading._setStep = setStep;
+  Loading._setSubStep = setSubStep;
+  Loading._buildTimelineHTML = buildTimelineHTML;
+  Loading._updateTimeline = updateTimeline;
+  Loading._forceAllDone = forceAllDone;
 })();

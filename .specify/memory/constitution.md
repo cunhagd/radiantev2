@@ -90,9 +90,10 @@ sistema Material Design 3 / Gemini com:
 
 - **Paleta**: Gradiente `#4285f4 → #9b51e0 → #e91e63 → #fbbc05`
 - **Tipografia**: Google Sans, Google Sans Text, Google Sans Mono
-- **Feedback de loading**: Overlay com glow pulsante, timer e barra de
-  progresso simulada
-- **Polling**: Requisições a cada 3s para `/api/status` durante análise
+- **Feedback de loading**: Overlay com timeline interativa mostrando o
+  progresso de cada etapa da analise em tempo real
+- **Polling**: Requisições a cada 1.2s para `/api/status` e `/api/progress`
+  durante análise, com cache-busting via query parameter
 - **Responsividade**: Breakpoints em 768px e 480px
 
 > **Emenda MINOR v1.1.0**: A versão original exigia um único arquivo HTML com

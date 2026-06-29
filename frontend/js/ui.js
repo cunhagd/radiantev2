@@ -56,8 +56,10 @@ window.UI = {};
       '<div class="empty-state">Nenhum dado. Inicie uma analise.</div>';
     DOM.obsCard.style.display = 'none';
     DOM.auditContent.innerText = 'Carregando...';
-    DOM.btnOnce.disabled = true;
-    DOM.btnTen.disabled = true;
+    // Apos limpeza, reabilita botoes para nova rodagem
+    DOM.btnOnce.disabled = false;
+    DOM.btnTen.disabled = false;
+    DOM.btnUpload.disabled = false;
   }
 
   async function handleFileUpload(input) {

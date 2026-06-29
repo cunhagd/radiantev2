@@ -794,3 +794,8 @@ def get_last_metrics() -> dict | None:
     if not _execution_history:
         return None
     return _execution_history[-1].get("metrics")
+
+
+def clear_execution_history() -> None:
+    """Limpa todo o historico de execucoes."""
+    _execution_history.clear()

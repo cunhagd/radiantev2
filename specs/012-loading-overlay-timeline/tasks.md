@@ -121,8 +121,8 @@
 **Purpose**: Verificacoes finais e documentacao.
 
 - [x] T022 Rodar `npx vitest run` em `frontend/` e confirmar que todos os testes existentes + novos passam
-- [ ] T023 Rodar `python dev.py --server` e verificar que a timeline funciona em http://localhost:8000
-- [ ] T024 Executar `quickstart.md` — validar todos os 4 cenarios manualmente
+- [x] T023 Rodar `python dev.py --server` e verificar que a timeline funciona em http://localhost:8000
+- [x] T024 Executar `quickstart.md` — validar todos os 4 cenarios manualmente
 
 ---
 

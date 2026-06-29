@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import threading
 from http.server import SimpleHTTPRequestHandler, HTTPServer
@@ -151,6 +152,11 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
 
     def _run_analysis(self, mode: str) -> None:
         try:
+            # Garante que o profile AWS seja propagado para a thread
+            if config.aws_profile:
+                os.environ["AWS_PROFILE"] = config.aws_profile
+                os.environ["AWS_DEFAULT_PROFILE"] = config.aws_profile
+
             ctx = get_s3_combined_context(config)
             if not ctx.strip():
                 raise ValueError("Nenhum documento para analise")

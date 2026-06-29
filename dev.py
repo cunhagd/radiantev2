@@ -127,6 +127,16 @@ def server():
     print(f"  {YELLOW}Pressione Ctrl+C para parar{RESET}")
     env = os.environ.copy()
     env.pop("AWS_PAGER", None)
+    # Garante que o profile radiante seja usado (se setado via variavel de ambiente)
+    profile = os.environ.get("AWS_PROFILE") or os.environ.get("AWS_DEFAULT_PROFILE")
+    if profile:
+        env["AWS_PROFILE"] = profile
+        env["AWS_DEFAULT_PROFILE"] = profile
+        ok(f"Profile AWS: {profile}")
+    else:
+        warn("AWS_PROFILE nao definido. Use: $env:AWS_PROFILE='radiante'")
+    # Remove variavel poluente do ambiente (test-token)
+    env.pop("AWS_BEARER_TOKEN_BEDROCK", None)
     try:
         subprocess.run(
             [sys.executable, "-m", "backend.app", "--mode", "web", "--port", "8000"],

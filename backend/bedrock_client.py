@@ -131,10 +131,13 @@ def _build_client(config: Config, region: str) -> OpenAI:
     from requests_aws4auth import AWS4Auth
     import boto3
 
-    profile = config.aws_profile or os.environ.get("AWS_DEFAULT_PROFILE", "") or None
-    print(f"  [DEBUG] _build_client: profile='{profile}' regiao={region}", flush=True)
-
-    session = boto3.Session(profile_name=profile, region_name=region)
+    profile = config.aws_profile or os.environ.get("AWS_DEFAULT_PROFILE") or ""
+    if profile:
+        print(f"  [DEBUG] _build_client: profile='{profile}' regiao={region}", flush=True)
+        session = boto3.Session(profile_name=profile, region_name=region)
+    else:
+        print(f"  [DEBUG] _build_client: usando profile padrao do boto3, regiao={region}", flush=True)
+        session = boto3.Session(region_name=region)
     credentials = session.get_credentials()
     frozen = credentials.get_frozen_credentials()
 

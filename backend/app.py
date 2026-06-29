@@ -156,6 +156,8 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
             if config.aws_profile:
                 os.environ["AWS_PROFILE"] = config.aws_profile
                 os.environ["AWS_DEFAULT_PROFILE"] = config.aws_profile
+            # Remove token poluente que pode estar no ambiente (ex: test-token)
+            os.environ.pop("AWS_BEARER_TOKEN_BEDROCK", None)
 
             ctx = get_s3_combined_context(config)
             if not ctx.strip():

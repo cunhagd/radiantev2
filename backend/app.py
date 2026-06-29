@@ -187,6 +187,7 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
         # 0. Verifica se ha analise em andamento
         with jobs_lock:
             if ANALYSIS_JOBS["status"] == "processing":
+                self.send_response(409)
                 self._serve_json({"status": "error", "message": "Nao e possivel limpar durante uma analise em andamento."})
                 return
 

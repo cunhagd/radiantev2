@@ -28,7 +28,7 @@
 ## 6. [US1] Verificacao de analise em andamento (FR-012) [X]
 **Arquivo**: `backend/app.py`
 - Em `_handle_clear()`, verificar `ANALYSIS_JOBS["status"]` antes de limpar
-- Se `"processing"`, retornar erro 409 (Conflict)
+- Se `"processing"`, retornar HTTP 409 (Conflict)
 
 ## 7. [US1] Tratamento de erros parciais (FR-011) [X]
 **Arquivo**: `backend/app.py`

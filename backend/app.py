@@ -22,6 +22,7 @@ from backend.s3_client import (
 
 ANALYSIS_JOBS: dict[str, Any] = {
     "status": "idle", "message": "", "error_details": "",
+    "last_result": None,  # Cache do ultimo resultado em memoria
 }
 jobs_lock = threading.Lock()
 config: Config = None  # type: ignore
@@ -37,13 +38,23 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
             elif self.path == "/api/progress":
                 self._serve_json(Progress.get())
             elif self.path == "/api/last-result":
-                # Tenta consolidado_10x.json primeiro (modo 10x), depois resultado_final.json (modo once)
+                # 1. Tenta cache em memoria primeiro (mais rapido, nao depende de S3)
+                with jobs_lock:
+                    cached = ANALYSIS_JOBS.get("last_result")
+                    if cached is not None:
+                        self._serve_json(cached)
+                        return
+
+                # 2. Fallback: tenta S3 (consolidado_10x.json primeiro, depois resultado_final.json)
                 data = download_file(config, "results/consolidado_10x.json")
                 if not data:
                     data = download_file(config, "results/resultado_final.json")
                 if data:
                     try:
                         parsed = json.loads(data)
+                        # Atualiza cache
+                        with jobs_lock:
+                            ANALYSIS_JOBS["last_result"] = parsed
                         self._serve_json(parsed)
                     except json.JSONDecodeError:
                         self._serve_json({"status": "error", "message": "JSON invalido"})
@@ -54,7 +65,12 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                 if data:
                     self._serve_bytes(data, "text/markdown; charset=utf-8")
                 else:
-                    self._serve_json({"status": "no_data"})
+                    # Tenta relatorio de auditoria local (modo once)
+                    local_audit = ROOT_DIR / "data" / "relatorio_consolidado.pdf"
+                    if local_audit.exists():
+                        self._serve_json({"status": "ok", "message": "Relatorio consolidado disponivel em /data/relatorio_consolidado.pdf"})
+                    else:
+                        self._serve_json({"status": "no_data"})
             elif self.path == "/api/fallback-status":
                 self._serve_json(get_fallback_status())
             elif self.path == "/api/metrics":
@@ -122,9 +138,11 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
             result = fn(config, ctx)
             with jobs_lock:
                 if result.get("status") == "completed":
+                    parsed_data = result.get("data", {})
                     ANALYSIS_JOBS.update(
                         status="completed",
-                        message=json.dumps(result.get("data", {}), ensure_ascii=False),
+                        message=json.dumps(parsed_data, ensure_ascii=False),
+                        last_result=parsed_data,
                     )
                 else:
                     ANALYSIS_JOBS.update(status="error", error_details=result.get("message", "Erro"))

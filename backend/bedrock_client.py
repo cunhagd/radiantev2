@@ -131,7 +131,7 @@ def _build_client(config: Config, region: str) -> OpenAI:
     from requests_aws4auth import AWS4Auth
     import boto3
 
-    session = boto3.Session()
+    session = boto3.Session(profile_name=config.aws_profile, region_name=region)
     credentials = session.get_credentials()
     frozen = credentials.get_frozen_credentials()
 

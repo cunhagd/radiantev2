@@ -331,29 +331,65 @@ def generate_pdf(text: str, output_path: str | Path) -> str:
     if in_etapa:
         flush_etapa()
 
+    # T003: Fallback de conteudo vazio — garante >= 1 pagina mesmo sem elementos
+    if not elements:
+        elements.append(Paragraph(
+            "Nenhum conteúdo disponível para o relatório.",
+            BODY_STYLE,
+        ))
+
     # ── Two-pass build (Página X de Y) ─────────────────────────────────
-    # Pass 1: build silencioso para contar paginas
-    _counter = [0]
+    def _validate_pdf(path: Path) -> None:
+        """T001: Validacao pos-build — verifica estrutura minima do PDF."""
+        if not path.exists():
+            raise RuntimeError(
+                f"Falha na geracao do PDF: arquivo {path} nao foi criado"
+            )
+        data = path.read_bytes()
+        if not data.startswith(b"%PDF-"):
+            raise RuntimeError(
+                f"Falha na geracao do PDF: cabecalho %PDF- ausente em {path}"
+            )
+        if not data.strip().endswith(b"%%EOF"):
+            raise RuntimeError(
+                f"Falha na geracao do PDF: marcador %%EOF ausente em {path}"
+            )
 
-    def _count_pages(canvas, doc):
-        _counter[0] += 1
-
+    # T002: Tratamento de erro no build — try/except com limpeza
     _tmp_path = str(output_path.with_suffix(".tmp.pdf"))
-    doc1 = SimpleDocTemplate(
-        _tmp_path, pagesize=A4,
-        leftMargin=40, rightMargin=40,
-        topMargin=50, bottomMargin=40,
-    )
-    doc1.build(elements, onFirstPage=_count_pages, onLaterPages=_count_pages)
-    total_pages = _counter[0]
-    Path(_tmp_path).unlink(missing_ok=True)
 
-    # Pass 2: build final com rodape contendo total de paginas
-    page_cb = _make_page_callback(total_pages)
-    doc2 = SimpleDocTemplate(
-        str(output_path), pagesize=A4,
-        leftMargin=40, rightMargin=40,
-        topMargin=50, bottomMargin=40,
-    )
-    doc2.build(elements, onFirstPage=page_cb, onLaterPages=page_cb)
+    try:
+        # Pass 1: build silencioso para contar paginas
+        _counter = [0]
+
+        def _count_pages(canvas, doc):
+            _counter[0] += 1
+
+        doc1 = SimpleDocTemplate(
+            _tmp_path, pagesize=A4,
+            leftMargin=40, rightMargin=40,
+            topMargin=50, bottomMargin=40,
+        )
+        doc1.build(elements, onFirstPage=_count_pages, onLaterPages=_count_pages)
+        total_pages = _counter[0]
+        Path(_tmp_path).unlink(missing_ok=True)
+
+        # Pass 2: build final com rodape contendo total de paginas
+        page_cb = _make_page_callback(total_pages)
+        doc2 = SimpleDocTemplate(
+            str(output_path), pagesize=A4,
+            leftMargin=40, rightMargin=40,
+            topMargin=50, bottomMargin=40,
+        )
+        doc2.build(elements, onFirstPage=page_cb, onLaterPages=page_cb)
+
+        # T001: Validacao pos-build
+        _validate_pdf(output_path)
+
+    except Exception:
+        # Remove PDF parcial se houver
+        Path(_tmp_path).unlink(missing_ok=True)
+        Path(output_path).unlink(missing_ok=True)
+        raise
+
     return str(output_path.resolve())

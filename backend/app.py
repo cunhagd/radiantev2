@@ -85,18 +85,6 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                         self._serve_json({"status": "error", "message": "JSON invalido"})
                 else:
                     self._serve_json({"status": "no_data", "message": "Nenhum resultado encontrado"})
-            elif path == "/api/audit-log":
-                # 1. Tenta arquivo local primeiro (nao depende de S3)
-                local_audit = ROOT_DIR / "data" / "auditoria_10x.md"
-                if local_audit.exists():
-                    self._serve_file(local_audit, "text/markdown; charset=utf-8")
-                    return
-                # 2. Fallback: tenta S3
-                data = download_file(config, "results/auditoria_10x.md")
-                if data:
-                    self._serve_bytes(data, "text/markdown; charset=utf-8")
-                else:
-                    self._serve_json({"status": "no_data"})
             elif path == "/api/fallback-status":
                 self._serve_json(get_fallback_status())
             elif path == "/api/metrics":

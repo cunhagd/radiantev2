@@ -311,59 +311,6 @@
   color: var(--accent);
 }
 
-/* --- Audit Section --- */
-.audit-section {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.audit-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  padding: 0.75rem 0;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  font-weight: 500;
-  transition: color 0.2s ease;
-}
-
-.audit-toggle:hover {
-  color: var(--text);
-}
-
-.audit-toggle svg {
-  width: 1rem;
-  height: 1rem;
-  transition: transform 0.2s ease;
-}
-
-.audit-toggle.open svg {
-  transform: rotate(180deg);
-}
-
-.audit-body {
-  display: none;
-  margin-top: 0.75rem;
-  padding: 1rem 1.25rem;
-  background: #0f1115;
-  border-radius: var(--radius-md);
-  max-height: 20rem;
-  overflow-y: auto;
-  font-family: 'Google Sans Mono', monospace;
-  font-size: 0.8125rem;
-  white-space: pre-wrap;
-  color: #79c0ff;
-  border: 1px solid #21262d;
-  box-shadow: inset 0 2px 8px rgba(0,0,0,0.2);
-}
-
-.audit-body.visible {
-  display: block;
-  animation: fadeIn 0.2s ease;
-}
 
 /* --- Modal --- */
 .modal-content.alert-dialog {

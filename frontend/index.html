@@ -99,14 +99,7 @@
           Baixar Relatório PDF
         </a>
       </div>
-      <div class="audit-section">
-        <div class="audit-toggle" id="audit-toggle">
-          <svg id="audit-arrow" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          Ver Relatório de Auditoria
-        </div>
-        <div class="audit-body" id="audit-content">Carregando...</div>
-      </div>
-    </div>
+  </div>
 
     <!-- Metricas -->
     <div class="card" id="observability-card" style="display: none;">
@@ -267,11 +260,6 @@
         UI.confirmClearAll();
       });
 
-      // Audit toggle
-      document.getElementById('audit-toggle').addEventListener('click', function () {
-        UI.toggleAuditLog();
-      });
-
       // Load data on startup
       API.loadLastResult().then(function (data) {
         // Se carregou dados validos, bloqueia botoes (exceto lixeira)
@@ -281,8 +269,7 @@
           UI.updateButtonsState('initial');
         }
       });
-      API.loadAuditLog();
-    });
+      });
   </script>
 
 </body>

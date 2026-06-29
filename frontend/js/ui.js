@@ -86,7 +86,6 @@ window.UI = {};
     DOM.cifrasList.innerHTML =
       '<div class="empty-state">Nenhum dado. Inicie uma analise.</div>';
     DOM.obsCard.style.display = 'none';
-    DOM.auditContent.innerText = 'Carregando...';
     // Apos limpeza, volta ao estado inicial (apenas upload liberado)
     updateButtonsState('initial');
   }
@@ -133,16 +132,11 @@ window.UI = {};
     input.value = '';
   }
 
-  function toggleAuditLog() {
-    DOM.auditContent.classList.toggle('visible');
-    document.querySelector('.audit-toggle').classList.toggle('open');
-  }
 
   UI.showClearModal = showClearModal;
   UI.closeClearModal = closeClearModal;
   UI.confirmClearAll = confirmClearAll;
   UI.clearAllFrontendData = clearAllFrontendData;
   UI.handleFileUpload = handleFileUpload;
-  UI.toggleAuditLog = toggleAuditLog;
   UI.updateButtonsState = updateButtonsState;
 })();

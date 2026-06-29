@@ -36,23 +36,6 @@ describe('API Module', () => {
     await expect(API.fetchJSON('/api/status')).rejects.toThrow('HTTP 500');
   });
 
-  it('API.fetchText retorna texto para HTTP ok', async () => {
-    global.fetch.mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve('conteudo do log'),
-    });
-
-    const result = await API.fetchText('/api/audit-log');
-    expect(result).toBe('conteudo do log');
-  });
-
-  it('API.fetchText retorna null para HTTP nao-ok', async () => {
-    global.fetch.mockResolvedValue({ ok: false, status: 404 });
-
-    const result = await API.fetchText('/api/audit-log');
-    expect(result).toBeNull();
-  });
-
   it('API.post faz POST com body', async () => {
     global.fetch.mockResolvedValue({ ok: true });
 

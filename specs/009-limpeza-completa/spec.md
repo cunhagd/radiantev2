@@ -20,7 +20,7 @@ O usuário concluiu uma análise jurídica e visualizou os resultados na tela. A
 
 **Acceptance Scenarios**:
 
-1. **Given** que o usuário completou uma análise e há dados nos 6 locais de armazenamento, **When** o usuário clica no botão lixeira e confirma a ação, **Then** o diretório local `data/` é limpo (docs/, markdown_docs/, results/, PDFs, JSONs).
+1. **Given** que o usuário completou uma análise e há dados nos 6 locais de armazenamento, **When** o usuário clica no botão lixeira e confirma a ação, **Then** o diretório local `data/` é limpo (docs/, markdown_docs/, PDFs, JSONs, relatórios .md).
 
 2. **Given** que o usuário completou uma análise e há dados no bucket S3, **When** o usuário clica no botão lixeira e confirma a ação, **Then** os prefixos `docs/`, `markdown_docs/`, `results/` e `runs/` do bucket `radiante-final` são limpos.
 
@@ -81,15 +81,15 @@ O usuário clica no botão lixeira quando o sistema já está limpo (sem rodagen
 ### Functional Requirements
 
 - **FR-001**: O sistema DEVE expor um endpoint `/api/clear-all` que aceite requisições POST e execute a limpeza completa em todos os 6 locais de armazenamento.
-- **FR-002**: O sistema DEVE limpar o diretório local `data/` removendo todos os arquivos e subdiretórios em `docs/`, `markdown_docs/`, `results/`, PDFs e JSONs.
+- **FR-002**: O sistema DEVE limpar o diretório local `data/` removendo todos os arquivos e subdiretórios em `docs/`, `markdown_docs/`, PDFs, JSONs e relatórios `.md` na raiz.
 - **FR-003**: O sistema DEVE limpar o bucket S3 `radiante-final` removendo todos os objetos sob os prefixos `docs/`, `markdown_docs/`, `results/` e `runs/`.
 - **FR-004**: O sistema DEVE resetar a memória do servidor reinicializando o dicionário `ANALYSIS_JOBS` para seu estado padrão (`status: "idle"`, `message: ""`, `error_details: ""`, `last_result: None`).
 - **FR-005**: O sistema DEVE executar `Progress.reset()` para reinicializar o estado de progresso para o padrão.
 - **FR-006**: O sistema DEVE limpar o `_execution_history` no módulo `pipeline`, esvaziando a lista de histórico de execuções.
 - **FR-007**: O frontend DEVE chamar `clearAllFrontendData()` após receber confirmação de sucesso do backend, limpando todos os dados renderizados na tela.
 - **FR-008**: O sistema DEVE manter os botões de upload e análise habilitados após a conclusão da limpeza.
-- **FR-009**: O sistema DEVE desabilitar o botão lixeira durante a execução da limpeza para evitar cliques concorrentes.
-- **FR-010**: O sistema DEVE exibir feedback visual sobre o progresso da limpeza (mensagens de status como "Limpando arquivos locais...", "Limpando S3...", etc.).
+- **FR-009**: O sistema DEVE desabilitar o botão de confirmação do modal de limpeza durante a execução da operação para evitar cliques concorrentes.
+- **FR-010**: O sistema DEVE exibir mensagem de status na barra superior da interface indicando o início e a conclusão da limpeza.
 - **FR-011**: O sistema DEVE capturar e reportar erros parciais sem interromper a limpeza dos demais locais.
 - **FR-012**: O endpoint `/api/clear-all` DEVE verificar se há uma análise em andamento; em caso positivo, DEVE rejeitar a requisição com status 409 (Conflict) a menos que a funcionalidade de cancelamento esteja implementada (P2).
 

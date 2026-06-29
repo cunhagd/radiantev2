@@ -184,21 +184,36 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
             self._serve_json({"status": "error", "message": "Content-Length ou X-Filename ausente"})
 
     def _handle_clear(self) -> None:
-        # 1. Limpa diretorio local data/ (docs, markdown_docs, PDFs, JSONs, auditoria)
+        # 0. Verifica se ha analise em andamento
+        with jobs_lock:
+            if ANALYSIS_JOBS["status"] == "processing":
+                self._serve_json({"status": "error", "message": "Nao e possivel limpar durante uma analise em andamento."})
+                return
+
+        erros: list[str] = []
+
+        # 1. Limpa diretorio local data/ (docs, markdown_docs, PDFs, JSONs, .md)
         data_root = ROOT_DIR / "data"
         if data_root.exists():
-            import shutil
-            for item in data_root.iterdir():
-                if item.is_dir():
-                    shutil.rmtree(item)
-                elif item.suffix in (".pdf", ".json", ".md"):
-                    item.unlink()
-            # Recria diretorios necessarios
-            (data_root / "docs").mkdir(parents=True, exist_ok=True)
-            (data_root / "markdown_docs").mkdir(parents=True, exist_ok=True)
+            try:
+                import shutil
+                for item in data_root.iterdir():
+                    if item.is_dir():
+                        shutil.rmtree(item)
+                    elif item.suffix in (".pdf", ".json", ".md"):
+                        item.unlink()
+                # Recria diretorios necessarios
+                (data_root / "docs").mkdir(parents=True, exist_ok=True)
+                (data_root / "markdown_docs").mkdir(parents=True, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                erros.append(f"Falha ao limpar diretorio local: {e}")
 
         # 2. Limpa bucket S3
-        total_s3 = sum(delete_files(config, p) for p in ["docs/", "markdown_docs/", "results/", "runs/"])
+        try:
+            total_s3 = sum(delete_files(config, p) for p in ["docs/", "markdown_docs/", "results/", "runs/"])
+        except Exception as e:
+            total_s3 = 0
+            erros.append(f"Falha ao limpar S3: {e}")
 
         # 3. Reseta estado em memoria
         with jobs_lock:
@@ -214,7 +229,15 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
         from backend.pipeline import clear_execution_history
         clear_execution_history()
 
-        self._serve_json({"status": "ok", "message": "Sistema limpo com sucesso", "s3_deleted": total_s3})
+        if erros:
+            self._serve_json({
+                "status": "partial",
+                "message": "Sistema limpo com erros parciais.",
+                "errors": erros,
+                "s3_deleted": total_s3,
+            })
+        else:
+            self._serve_json({"status": "ok", "message": "Sistema limpo com sucesso", "s3_deleted": total_s3})
 
     def _serve_json(self, data: dict) -> None:
         self._serve_bytes(json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")

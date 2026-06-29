@@ -138,7 +138,7 @@ def load_config() -> Config:
 
     return Config(
         aws_region=env.get("REGION", "us-east-1"),
-        aws_profile=os.getenv("AWS_PROFILE", ""),
+        aws_profile=os.getenv("AWS_PROFILE") or os.getenv("AWS_DEFAULT_PROFILE") or "",
         bearer_token=env.get("AWS_BEARER_TOKEN_BEDROCK", ""),
         model_id=env.get("BEDROCK_MODEL_ID", "xai.grok-4.3"),
         grok_price_input=float(env.get("GROK_PRICE_INPUT", "0") or "0"),

@@ -1,0 +1,117 @@
+/* ============================================================
+   Radiante v2 — UI Module
+   Interacoes de usuario (upload, modal, audit, clear)
+   Depende de: state.js (DOM), api.js (API)
+   ============================================================ */
+
+window.UI = {};
+
+(function () {
+  function showClearModal() {
+    DOM.clearModal.style.display = 'flex';
+  }
+
+  function closeClearModal() {
+    DOM.clearModal.style.display = 'none';
+  }
+
+  async function confirmClearAll() {
+    DOM.btnClear.disabled = true;
+    DOM.uploadStatus.style.color = '#60a5fa';
+    DOM.uploadStatus.textContent = 'Limpando todos os dados...';
+
+    try {
+      const response = await fetch(API.BASE + '/api/clear-all', { method: 'POST' });
+      if (response.ok) {
+        clearAllFrontendData();
+        DOM.uploadStatus.style.color = '#34d399';
+        DOM.uploadStatus.textContent = 'Todos os dados foram limpos com sucesso.';
+      } else {
+        DOM.uploadStatus.style.color = '#f87171';
+        DOM.uploadStatus.textContent = 'Erro ao limpar os dados.';
+      }
+    } catch (err) {
+      console.error('Erro ao limpar dados:', err);
+      DOM.uploadStatus.style.color = '#f87171';
+      DOM.uploadStatus.textContent = 'Erro de conexao ao limpar os dados.';
+    } finally {
+      closeClearModal();
+      DOM.btnClear.disabled = false;
+      setTimeout(function () { DOM.uploadStatus.textContent = ''; }, 5000);
+    }
+  }
+
+  function clearAllFrontendData() {
+    var metaIds = [
+      'meta-processo', 'meta-autor', 'meta-advogado', 'meta-reclamada',
+      'meta-tomadora', 'meta-juizo', 'meta-localidade', 'meta-inicio',
+      'meta-valor-causa',
+    ];
+    metaIds.forEach(function (id) {
+      document.getElementById(id).textContent = '—';
+    });
+
+    DOM.kpiTotal.textContent = 'R$ 0,00';
+    DOM.cifrasList.innerHTML =
+      '<div class="empty-state">Nenhum dado. Inicie uma analise.</div>';
+    DOM.obsCard.style.display = 'none';
+    DOM.auditContent.innerText = 'Carregando...';
+    DOM.btnOnce.disabled = true;
+    DOM.btnTen.disabled = true;
+  }
+
+  async function handleFileUpload(input) {
+    const files = input.files;
+    if (files.length === 0) return;
+
+    DOM.uploadStatus.style.color = '#60a5fa';
+    DOM.uploadStatus.textContent = 'Preparando upload de ' + files.length + ' arquivo(s)...';
+    DOM.btnOnce.disabled = true;
+    DOM.btnTen.disabled = true;
+    DOM.btnUpload.disabled = true;
+
+    let successCount = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      DOM.uploadStatus.textContent = 'Enviando arquivo ' + (i + 1) + ' de ' +
+        files.length + ': ' + file.name + '...';
+
+      try {
+        const response = await API.uploadFile(file);
+        if (response.ok) successCount++;
+        else console.error('Erro ao enviar ' + file.name + ': status ' + response.status);
+      } catch (err) {
+        console.error('Erro de rede ao enviar ' + file.name + ':', err);
+      }
+    }
+
+    DOM.btnUpload.disabled = false;
+
+    if (successCount === files.length) {
+      DOM.uploadStatus.style.color = '#34d399';
+      DOM.uploadStatus.textContent = successCount +
+        ' arquivo(s) enviados com sucesso! Pronto para analise.';
+      DOM.btnOnce.disabled = false;
+      DOM.btnTen.disabled = false;
+    } else {
+      DOM.uploadStatus.style.color = '#f87171';
+      DOM.uploadStatus.textContent = 'Falha ao enviar documentos. Enviados: ' +
+        successCount + ' de ' + files.length + '.';
+    }
+
+    input.value = '';
+  }
+
+  function toggleAuditLog() {
+    DOM.auditContent.classList.toggle('visible');
+    document.querySelector('.audit-toggle').classList.toggle('open');
+  }
+
+  UI.showClearModal = showClearModal;
+  UI.closeClearModal = closeClearModal;
+  UI.confirmClearAll = confirmClearAll;
+  UI.clearAllFrontendData = clearAllFrontendData;
+  UI.handleFileUpload = handleFileUpload;
+  UI.toggleAuditLog = toggleAuditLog;
+})();

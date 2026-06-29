@@ -1,0 +1,65 @@
+/* ============================================================
+   Radiante v2 — Responsivo
+   Media queries para tablet e mobile
+   ============================================================ */
+
+@media (max-width: 768px) {
+  body {
+    padding: 1rem;
+  }
+
+  header {
+    flex-direction: column;
+    gap: 1.25rem;
+    align-items: stretch;
+  }
+
+  .actions-group {
+    align-items: stretch;
+  }
+
+  .actions {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .btn span {
+    display: none;
+  }
+
+  .btn svg {
+    margin: 0;
+  }
+
+  .container {
+    gap: 1.25rem;
+  }
+
+  .card {
+    padding: 1.25rem;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .kpi-value {
+    font-size: 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .badge {
+    font-size: 0.6875rem;
+    padding: 0.125rem 0.5rem;
+  }
+}

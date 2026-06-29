@@ -1,0 +1,408 @@
+/* ============================================================
+   Radiante v2 — Componentes
+   Botoes, badges, cifras, metricas, modal
+   ============================================================ */
+
+/* --- Botoes --- */
+.btn {
+  font-family: 'Google Sans Text', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.75rem 1.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  color: var(--accent-blue);
+  box-shadow: none;
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-surface-variant);
+  border-color: rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.actions .btn {
+  font-size: 0.8125rem;
+  padding: 0.625rem 1.25rem;
+}
+
+.actions .btn svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.btn-primary {
+  background: #1a73e8;
+  color: white;
+  border: none;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #1557b0;
+  box-shadow: 0 4px 12px rgba(26, 115, 232, 0.25);
+}
+
+.btn-upload {
+  background: var(--bg-surface);
+  border: 1px solid rgba(66, 133, 244, 0.24);
+  color: var(--accent-blue);
+}
+
+.btn-upload:hover {
+  background: var(--bg-surface-variant);
+  border-color: var(--accent-blue);
+}
+
+.btn-clear {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  padding: 0.625rem;
+  min-width: auto;
+}
+
+.btn-clear:hover:not(:disabled) {
+  background: var(--bg-surface-variant);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-download {
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  border-color: rgba(22, 163, 74, 0.3);
+  color: var(--success);
+  font-weight: 500;
+  gap: 0.5rem;
+}
+
+.btn-danger {
+  background: transparent;
+  color: black;
+  font-weight: bold;
+  border: 1px solid var(--danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #9c1f19;
+  border-color: #9c1f19;
+  color: white;
+  box-shadow: 0 4px 12px rgba(179, 38, 30, 0.2);
+}
+
+.modal-actions .btn {
+  color: black;
+  font-weight: 500;
+  background: transparent;
+}
+
+/* --- Badges --- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.2;
+  transition: all 0.2s ease;
+}
+
+.badge-certa {
+  background: var(--success-subtle);
+  color: var(--success);
+}
+
+.badge-provavel {
+  background: var(--info-subtle);
+  color: var(--info);
+}
+
+.badge-possivel {
+  background: var(--warning-subtle);
+  color: var(--warning);
+}
+
+.badge-improvavel {
+  background: var(--warning-subtle);
+  color: var(--warning);
+}
+
+.badge-remota {
+  background: var(--bg-surface-variant);
+  color: var(--text-muted);
+}
+
+/* --- Cifras --- */
+.cifras-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.cifra-row-item {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.25rem;
+  background: var(--bg-surface-variant);
+  border-radius: var(--radius-md);
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s ease;
+}
+
+.cifra-row-item:hover {
+  transform: scale(1.005);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.cifra-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.cifra-info-block {
+  flex: 1;
+  min-width: 200px;
+}
+
+.cifra-name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.cifra-values-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.cifra-value-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.cifra-value-label {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cifra-value-amount {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.cifra-value-amount.allocated {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.cifra-row-body {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed rgba(0, 0, 0, 0.06);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 3rem 1.5rem;
+  font-size: 0.875rem;
+}
+
+/* --- KPI Footer --- */
+.kpi-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 1rem;
+  padding-top: 1.5rem;
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.kpi-label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.kpi-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--success);
+  letter-spacing: -0.02em;
+}
+
+/* --- Metricas --- */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.metric-card {
+  background: var(--bg-surface-variant);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  border: 1px solid var(--border-subtle);
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.metric-label {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+
+.metric-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--info);
+  letter-spacing: -0.01em;
+}
+
+.metric-value.highlight {
+  font-size: 1rem;
+  color: var(--accent);
+}
+
+/* --- Audit Section --- */
+.audit-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.audit-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.75rem 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.audit-toggle:hover {
+  color: var(--text);
+}
+
+.audit-toggle svg {
+  width: 1rem;
+  height: 1rem;
+  transition: transform 0.2s ease;
+}
+
+.audit-toggle.open svg {
+  transform: rotate(180deg);
+}
+
+.audit-body {
+  display: none;
+  margin-top: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: #0f1115;
+  border-radius: var(--radius-md);
+  max-height: 20rem;
+  overflow-y: auto;
+  font-family: 'Google Sans Mono', monospace;
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  color: #79c0ff;
+  border: 1px solid #21262d;
+  box-shadow: inset 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.audit-body.visible {
+  display: block;
+  animation: fadeIn 0.2s ease;
+}
+
+/* --- Modal --- */
+.modal-content.alert-dialog {
+  background: var(--bg-surface);
+  max-width: 400px;
+  width: 100%;
+  padding: 1.75rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-lg);
+  transform: scale(0.95);
+  animation: modalScaleUp 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  box-sizing: border-box;
+}
+
+.clear-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.modal-body {
+  margin-bottom: 1.75rem;
+}
+
+.modal-body p {
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+

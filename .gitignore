@@ -7,4 +7,6 @@ node_modules/
 data/docs/
 data/markdown_docs/
 data/results/
+data/*.pdf
+data/*.json
 infra/scripts/.env.production

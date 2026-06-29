@@ -106,7 +106,7 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                 history = get_execution_history()
                 self._serve_json({"status": "ok", "history": history, "total": len(history)})
             elif path.startswith("/data/"):
-                fpath = ROOT_DIR / self.path.lstrip("/")
+                fpath = ROOT_DIR / path.lstrip("/")
                 if fpath.exists():
                     mime = "application/pdf" if fpath.suffix == ".pdf" else "application/octet-stream"
                     self._serve_file(fpath, mime)
@@ -114,7 +114,7 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                     self.send_error(404)
             elif path.startswith("/css/") or path.startswith("/js/"):
                 # Arquivos estaticos modulares do frontend
-                fpath = ROOT_DIR / "frontend" / self.path.lstrip("/")
+                fpath = ROOT_DIR / "frontend" / path.lstrip("/")
                 if fpath.exists():
                     mime_map = {".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".html": "text/html; charset=utf-8"}
                     mime = mime_map.get(fpath.suffix, "application/octet-stream")
@@ -172,7 +172,9 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
             result = fn(config, ctx)
             with jobs_lock:
                 if result.get("status") == "completed":
-                    parsed_data = result.get("data", {})
+                    parsed_data = result.get("data", {}).copy() if result.get("data") else {}
+                    # Adiciona o nome do PDF gerado para o frontend usar
+                    parsed_data["pdf_filename"] = "relatorio_consolidado_10x.pdf" if mode == "ten" else "relatorio_consolidado.pdf"
                     ANALYSIS_JOBS.update(
                         status="completed",
                         message=json.dumps(parsed_data, ensure_ascii=False),

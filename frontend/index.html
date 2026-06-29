@@ -226,11 +226,9 @@
         return;
       }
 
-      // Tenta determinar se veio do modo 10x ou once
-      var isTenMode = data.total_runs !== undefined || data.valor_total_estimado === undefined;
-      var pdfLink = isTenMode
-        ? API.BASE + '/data/relatorio_consolidado_10x.pdf'
-        : API.BASE + '/data/relatorio_consolidado.pdf';
+      // Usa o nome do PDF informado pelo backend (pdf_filename)
+      var pdfName = data.pdf_filename || 'relatorio_consolidado.pdf';
+      var pdfLink = API.BASE + '/data/' + pdfName;
       document.getElementById('download-pdf-btn').href = pdfLink;
 
       Cifras.renderMetadata(data);

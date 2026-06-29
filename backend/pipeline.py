@@ -318,10 +318,13 @@ def save_stage_files(
         s3_key = f"{s3_prefix}/{stage_name}_completo.md"
         upload_file(config, content.encode("utf-8"), s3_key)
 
+    # Adiciona nome do PDF ao JSON salvo
+    json_obj = data.get("parsed_json", {}).copy()
+    if "pdf_filename" not in json_obj:
+        json_obj["pdf_filename"] = "relatorio_consolidado.pdf"
+
     # Salva JSON final (local + S3)
-    json_data = json.dumps(
-        data.get("parsed_json", {}), indent=2, ensure_ascii=False,
-    )
+    json_data = json.dumps(json_obj, indent=2, ensure_ascii=False,)
     local_json_path = ROOT_DIR / "data" / "resultado_final.json"
     local_json_path.parent.mkdir(parents=True, exist_ok=True)
     local_json_path.write_text(json_data, encoding="utf-8")
@@ -329,6 +332,28 @@ def save_stage_files(
         config, json_data.encode("utf-8"),
         f"{s3_prefix}/resultado_final.json",
     )
+
+
+def clean_artefatos_anteriores(mode: str) -> None:
+    """Remove artefatos (PDFs e JSONs) do modo oposto antes de gerar novos.
+
+    Args:
+        mode: 'once' ou 'ten' — modo que sera executado.
+    """
+    pdfs_to_remove = (
+        ["relatorio_consolidado_10x.pdf"]
+        if mode == "once"
+        else ["relatorio_consolidado.pdf"]
+    )
+    jsons_to_remove = (
+        ["consolidado_10x.json"]
+        if mode == "once"
+        else ["resultado_final.json"]
+    )
+    for fname in pdfs_to_remove + jsons_to_remove:
+        fpath = ROOT_DIR / "data" / fname
+        if fpath.exists():
+            fpath.unlink()
 
 
 def run_once(config: Config, combined_context: str) -> dict:
@@ -350,10 +375,8 @@ def run_once(config: Config, combined_context: str) -> dict:
     # Salva resultados no S3
     save_stage_files(config, "results", combined_context, result)
 
-    # Remove PDF antigo do modo 10x para evitar divergencia
-    old_pdf_10x = ROOT_DIR / "data" / "relatorio_consolidado_10x.pdf"
-    if old_pdf_10x.exists():
-        old_pdf_10x.unlink()
+    # Remove artefatos do modo oposto (10x) antes de gerar novos
+    clean_artefatos_anteriores("once")
 
     # Gera PDF do relatorio
     report_text = (
@@ -601,16 +624,16 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
     upload_file(config, audit_text.encode("utf-8"), "results/auditoria_10x.md")
 
     # Salva JSON consolidado (local + S3)
-    json_consolidado = json.dumps(parsed_json, indent=2, ensure_ascii=False).encode("utf-8")
+    json_obj = parsed_json.copy()
+    json_obj["pdf_filename"] = "relatorio_consolidado_10x.pdf"
+    json_consolidado = json.dumps(json_obj, indent=2, ensure_ascii=False).encode("utf-8")
     json_local_path = ROOT_DIR / "data" / "consolidado_10x.json"
     json_local_path.parent.mkdir(parents=True, exist_ok=True)
     json_local_path.write_text(json_consolidado.decode("utf-8"), encoding="utf-8")
     upload_file(config, json_consolidado, "results/consolidado_10x.json")
 
-    # Remove PDF antigo do modo once para evitar divergencia
-    old_pdf_once = ROOT_DIR / "data" / "relatorio_consolidado.pdf"
-    if old_pdf_once.exists():
-        old_pdf_once.unlink()
+    # Remove artefatos do modo oposto (1x) antes de gerar novos
+    clean_artefatos_anteriores("ten")
 
     # Gera PDF consolidado
     report_lines = ["# Relatorio Consolidado - 10 Analises\n"]

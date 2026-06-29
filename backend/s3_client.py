@@ -3,6 +3,8 @@
 
 Gerencia upload, download, listagem e delecao de arquivos no bucket
 radiante-final, com fallback para modo local (data/) em caso de falha.
+
+As credenciais AWS sao passadas explicitamente via Config.
 """
 
 from __future__ import annotations
@@ -21,10 +23,17 @@ from backend.config import Config, ROOT_DIR
 def _build_s3_params(config: Config) -> dict:
     """Constroi parametros de autenticacao para cliente S3.
 
-    Usa a cadeia de credenciais padrao do boto3 (profile, env vars, etc.),
-    apenas definindo a regiao. Nao passa chaves explicitas.
+    Usa as credenciais explicitamente do Config, sem depender
+    de variaveis de ambiente ou profile SSO.
     """
-    return {"region_name": config.aws_region}
+    params: dict = {
+        "region_name": config.aws_region,
+    }
+    if config.aws_access_key_id:
+        params["aws_access_key_id"] = config.aws_access_key_id
+    if config.aws_secret_access_key:
+        params["aws_secret_access_key"] = config.aws_secret_access_key
+    return params
 
 
 def _get_client(config: Config):

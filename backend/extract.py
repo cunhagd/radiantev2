@@ -71,7 +71,12 @@ def _ocr_pdf(config: Config, file_bytes: bytes) -> str:
     import boto3
 
     region = config.aws_region
-    client = boto3.client("textract", region_name=region)
+    textract_params = {"region_name": region}
+    if config.aws_access_key_id:
+        textract_params["aws_access_key_id"] = config.aws_access_key_id
+    if config.aws_secret_access_key:
+        textract_params["aws_secret_access_key"] = config.aws_secret_access_key
+    client = boto3.client("textract", **textract_params)
     ocr_parts: list[str] = []
 
     try:

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Cliente Grok 4.3 via Amazon Bedrock Mantle.
 
-Suporta dois modos de autenticacao:
-  1. AWS SigV4 (SSO/boto3) - metodo principal
-  2. Bearer Token (API Key) - fallback se AWS_BEARER_TOKEN_BEDROCK estiver no .env
+Autenticacao exclusivamente via Bearer Token (AWS_BEARER_TOKEN_BEDROCK)
+definido no arquivo .env.
 
 Fallback regional entre us-east-1, us-west-2, us-east-2,
 reasoning configurado via .env (GROK_REASONING_EFFORT) e suporte a streaming.
@@ -14,7 +13,6 @@ Referencia: GROK_DOC.md
 from __future__ import annotations
 
 import time
-import os
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -107,8 +105,7 @@ def get_fallback_status() -> dict:
 def _build_client(config: Config, region: str) -> OpenAI:
     """Cria cliente OpenAI apontando para o endpoint Mantle na regiao.
 
-    Usa autenticacao AWS SigV4 (SSO/boto3) se nao houver bearer_token,
-    ou Bearer Token se estiver configurado no .env.
+    Usa exclusivamente Bearer Token (AWS_BEARER_TOKEN_BEDROCK) do .env.
 
     Args:
         config: Configuracao do sistema.
@@ -116,73 +113,21 @@ def _build_client(config: Config, region: str) -> OpenAI:
 
     Returns:
         Instancia de OpenAI configurada.
-    """
-    base_url = f"https://bedrock-mantle.{region}.api.aws/openai/v1"
 
-    # Se tem bearer token, usa API Key simples (mais rapido)
-    if config.bearer_token:
-        return OpenAI(
-            api_key=config.bearer_token,
-            base_url=base_url,
+    Raises:
+        ValueError: Se bearer_token estiver vazio.
+    """
+    if not config.bearer_token:
+        raise ValueError(
+            "AWS_BEARER_TOKEN_BEDROCK nao configurado no .env. "
+            "Gere uma API Key em: "
+            "https://console.aws.amazon.com/bedrock/home#/api-keys"
         )
 
-    # Senao, usa AWS SigV4 com httpx + requests-aws4auth
-    import httpx
-    from requests_aws4auth import AWS4Auth
-    import boto3
-
-    profile = config.aws_profile or os.environ.get("AWS_DEFAULT_PROFILE") or ""
-    if profile:
-        print(f"  [DEBUG] _build_client: profile='{profile}' regiao={region}", flush=True)
-        session = boto3.Session(profile_name=profile, region_name=region)
-    else:
-        print(f"  [DEBUG] _build_client: usando profile padrao do boto3, regiao={region}", flush=True)
-        session = boto3.Session(region_name=region)
-    credentials = session.get_credentials()
-    frozen = credentials.get_frozen_credentials()
-
-    auth = AWS4Auth(
-        frozen.access_key,
-        frozen.secret_key,
-        region,
-        "bedrock",
-        session_token=frozen.token,
-    )
-
-    class SigV4Transport(httpx.BaseTransport):
-        """Transporte HTTPX que aplica AWS SigV4 em cada requisicao."""
-
-        def __init__(self, aws_auth: AWS4Auth):
-            self.auth = aws_auth
-
-        def handle_request(self, request: httpx.Request) -> httpx.Response:
-            import requests as req_lib
-
-            req = req_lib.Request(
-                method=request.method,
-                url=str(request.url),
-                headers=dict(request.headers),
-                data=request.content,
-            )
-            prepared = req.prepare()
-            signed = self.auth(prepared)
-
-            session_r = req_lib.Session()
-            resp = session_r.send(signed, stream=True)
-
-            return httpx.Response(
-                status_code=resp.status_code,
-                headers=dict(resp.headers),
-                content=resp.content,
-                request=request,
-            )
-
-    http_client = httpx.Client(transport=SigV4Transport(auth))
-
+    base_url = f"https://bedrock-mantle.{region}.api.aws/openai/v1"
     return OpenAI(
-        api_key="",  # SigV4 substitui API key
+        api_key=config.bearer_token,
         base_url=base_url,
-        http_client=http_client,
     )
 
 

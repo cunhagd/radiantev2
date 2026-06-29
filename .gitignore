@@ -9,4 +9,5 @@ data/markdown_docs/
 data/results/
 data/*.pdf
 data/*.json
+data/etapas/
 infra/scripts/.env.production

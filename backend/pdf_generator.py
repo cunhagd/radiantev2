@@ -185,11 +185,14 @@ def _make_table(cells: list[str], is_header: bool) -> Table:
     return t
 
 
-def generate_pdf(text: str, output_path: str | Path) -> str:
-    """Gera PDF a partir de texto markdown com design Material Design 3.
+def generate_pdf(etapas_dir: str | Path, output_path: str | Path) -> str:
+    """Gera PDF a partir de arquivos markdown em um diretorio de etapas.
+
+    Le todos os arquivos .md do diretorio, concatena em ordem alfabetica
+    e processa com o parser markdown existente (Material Design 3).
 
     Args:
-        text: Conteudo markdown a ser convertido.
+        etapas_dir: Diretorio contendo arquivos .md das etapas.
         output_path: Caminho de saida do PDF.
 
     Returns:
@@ -197,6 +200,23 @@ def generate_pdf(text: str, output_path: str | Path) -> str:
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    etapas_path = Path(etapas_dir)
+
+    if not etapas_path.exists():
+        raise FileNotFoundError(
+            f"Diretorio de etapas nao encontrado: {etapas_dir}"
+        )
+
+    # Le todos os arquivos .md em ordem alfabetica
+    md_files = sorted(etapas_path.glob("*.md"))
+    if not md_files:
+        text = ""
+    else:
+        parts: list[str] = []
+        for fpath in md_files:
+            content = fpath.read_text(encoding="utf-8")
+            parts.append(content)
+        text = "\n\n".join(parts)
 
     lines = text.split("\n")
     elements: list = []

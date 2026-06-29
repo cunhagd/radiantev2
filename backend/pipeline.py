@@ -670,11 +670,27 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
         metrics=total_metrics, summary=parsed_json,
     )
 
+    # Prepara lista de metricas individuais das rodadas (para exibicao frontend)
+    run_metrics_list = []
+    for i, (_, m) in enumerate(valid_etapa3, 1):
+        if m:
+            run_metrics_list.append({
+                "run": i,
+                "prompt_tokens": m.prompt_tokens,
+                "completion_tokens": m.completion_tokens,
+                "cache_tokens": m.cache_tokens,
+                "cost_input": m.cost_input,
+                "cost_output": m.cost_output,
+                "cost_cache": m.cost_cache,
+                "cost_total": m.cost_total,
+            })
+
     return {
         "status": "completed",
         "data": parsed_json,
         "total_runs": len(valid_etapa3),
         "metrics": total_metrics,
+        "run_metrics_list": run_metrics_list,
     }
 
 

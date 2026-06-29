@@ -11,7 +11,7 @@ window.Metrics = {};
   function renderMetrics(data) {
     if (data.metrics) {
       DOM.obsCard.style.display = 'block';
-      DOM.metricsCostTotal.textContent = '$ ' + data.metrics.cost_total.toFixed(4);
+      DOM.metricsCostTotal.textContent = '$ ' + data.metrics.cost_total.toFixed(6);
       DOM.metricsPromptTokens.textContent = data.metrics.prompt_tokens.toLocaleString();
       DOM.metricsCacheTokens.textContent = data.metrics.cache_tokens.toLocaleString();
       DOM.metricsCompletionTokens.textContent = data.metrics.completion_tokens.toLocaleString();
@@ -27,7 +27,7 @@ window.Metrics = {};
             '<td>' + run.cache_tokens.toLocaleString() + '</td>' +
             '<td>' + run.completion_tokens.toLocaleString() + '</td>' +
             '<td style="font-weight: 600; color: var(--info);">$ ' +
-              run.cost_total.toFixed(4) + '</td>';
+              run.cost_total.toFixed(6) + '</td>';
           DOM.runsBody.appendChild(tr);
         });
       } else {

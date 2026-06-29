@@ -175,10 +175,17 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
         cl = int(self.headers.get("Content-Length", 0))
         fn = self.headers.get("X-Filename", "")
         if cl and fn:
-            success = upload_file(config, self.rfile.read(cl), f"docs/{fn}")
-            self._serve_json({"status": "ok" if success else "error", "filename": fn})
-            if not success:
-                self.send_response(500)
+            data = self.rfile.read(cl)
+            # 1. Salva sempre localmente primeiro
+            docs_dir = ROOT_DIR / "data" / "docs"
+            docs_dir.mkdir(parents=True, exist_ok=True)
+            local_path = docs_dir / fn
+            local_path.write_bytes(data)
+
+            # 2. Tenta S3 como copia de seguranca (falha silenciosa se token expirou)
+            upload_file(config, data, f"docs/{fn}")
+
+            self._serve_json({"status": "ok", "filename": fn})
         else:
             self.send_response(400)
             self._serve_json({"status": "error", "message": "Content-Length ou X-Filename ausente"})

@@ -125,9 +125,9 @@ def delete_files(config: Config, prefix: str) -> int:
 
 
 def get_s3_combined_context(config: Config) -> str:
-    """Baixa documentos do S3, extrai texto e gera contexto unico.
+    """Le documentos do diretorio local data/docs/ e extrai texto.
 
-    Prioriza S3. Se falhar, tenta modo local (data/docs/).
+    Se o diretorio local estiver vazio, tenta fallback para S3.
 
     Args:
         config: Configuracao do sistema.
@@ -141,26 +141,27 @@ def get_s3_combined_context(config: Config) -> str:
     md_dir = config.md_dir
     md_dir.mkdir(parents=True, exist_ok=True)
 
-    # Tenta S3 primeiro
-    doc_keys = list_files(config, "docs/")
-    if doc_keys:
-        for key in sorted(doc_keys):
-            content = download_file(config, key)
-            if content is None:
-                continue
-            filename = Path(key).name
-            text = get_document_text(config, filename, content)
-            combined_parts.append(f"--- Documento: {filename} ---\n{text}")
-            save_markdown(md_dir, filename, text)
+    docs_dir = config.docs_dir
+
+    # Prioriza diretorio local
+    if docs_dir.exists() and any(docs_dir.iterdir()):
+        for fpath in sorted(docs_dir.iterdir()):
+            if fpath.is_file():
+                content = fpath.read_bytes()
+                text = get_document_text(config, fpath.name, content)
+                combined_parts.append(f"--- Documento: {fpath.name} ---\n{text}")
+                save_markdown(md_dir, fpath.name, text)
     else:
-        # Fallback para modo local
-        docs_dir = config.docs_dir
-        if docs_dir.exists():
-            for fpath in sorted(docs_dir.iterdir()):
-                if fpath.is_file():
-                    content = fpath.read_bytes()
-                    text = get_document_text(config, fpath.name, content)
-                    combined_parts.append(f"--- Documento: {fpath.name} ---\n{text}")
-                    save_markdown(md_dir, fpath.name, text)
+        # Fallback para S3
+        doc_keys = list_files(config, "docs/")
+        if doc_keys:
+            for key in sorted(doc_keys):
+                content = download_file(config, key)
+                if content is None:
+                    continue
+                filename = Path(key).name
+                text = get_document_text(config, filename, content)
+                combined_parts.append(f"--- Documento: {filename} ---\n{text}")
+                save_markdown(md_dir, filename, text)
 
     return "\n\n".join(combined_parts)

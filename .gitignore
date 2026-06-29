@@ -1,0 +1,10 @@
+.venv
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+data/docs/
+data/markdown_docs/
+data/results/
+infra/scripts/.env.production

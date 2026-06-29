@@ -1,0 +1,55 @@
+# docker-compose.yml
+# Desenvolvimento local: backend + frontend (nginx)
+# Synthesized: 2026-06-28
+#
+# Uso:
+#   docker compose up -d            # Iniciar
+#   docker compose logs -f          # Ver logs
+#   docker compose down             # Parar
+#
+# Variaveis de ambiente (.env necessario):
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+#   AWS_BEARER_TOKEN_BEDROCK, BEDROCK_MODEL_ID
+#   BUCKET_NAME (opcional, default: radiante-final)
+
+services:
+  # Backend Python (servidor HTTP nativo)
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: runtime
+    container_name: radiante-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${REGION:-us-east-1}
+      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK}
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-6}
+      - BUCKET_NAME=${BUCKET_NAME:-radiante-final}
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/status')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Frontend (nginx: estatico + proxy reverso)
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/nginx/Dockerfile
+    container_name: radiante-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy

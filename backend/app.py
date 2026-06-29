@@ -30,15 +30,20 @@ config: Config = None  # type: ignore
 
 
 class DashboardHTTPHandler(SimpleHTTPRequestHandler):
+    def _clean_path(self) -> str:
+        """Remove query string do path para roteamento."""
+        return self.path.split("?")[0]
+
     def do_GET(self) -> None:
         try:
-            if self.path in ("/", "/index.html"):
+            path = self._clean_path()
+            if path in ("/", "/index.html"):
                 self._serve_file(ROOT_DIR / "frontend" / "index.html", "text/html; charset=utf-8")
-            elif self.path == "/api/status":
+            elif path == "/api/status":
                 self._serve_json(ANALYSIS_JOBS)
-            elif self.path == "/api/progress":
+            elif path == "/api/progress":
                 self._serve_json(Progress.get())
-            elif self.path == "/api/last-result":
+            elif path == "/api/last-result":
                 # 1. Tenta cache em memoria primeiro (mais rapido, nao depende de S3)
                 with jobs_lock:
                     cached = ANALYSIS_JOBS.get("last_result")
@@ -80,7 +85,7 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                         self._serve_json({"status": "error", "message": "JSON invalido"})
                 else:
                     self._serve_json({"status": "no_data", "message": "Nenhum resultado encontrado"})
-            elif self.path == "/api/audit-log":
+            elif path == "/api/audit-log":
                 # 1. Tenta arquivo local primeiro (nao depende de S3)
                 local_audit = ROOT_DIR / "data" / "auditoria_10x.md"
                 if local_audit.exists():
@@ -92,22 +97,22 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                     self._serve_bytes(data, "text/markdown; charset=utf-8")
                 else:
                     self._serve_json({"status": "no_data"})
-            elif self.path == "/api/fallback-status":
+            elif path == "/api/fallback-status":
                 self._serve_json(get_fallback_status())
-            elif self.path == "/api/metrics":
+            elif path == "/api/metrics":
                 metrics = get_last_metrics()
                 self._serve_json({"status": "ok", "metrics": metrics} if metrics else {"status": "no_data"})
-            elif self.path == "/api/metrics/history":
+            elif path == "/api/metrics/history":
                 history = get_execution_history()
                 self._serve_json({"status": "ok", "history": history, "total": len(history)})
-            elif self.path.startswith("/data/"):
+            elif path.startswith("/data/"):
                 fpath = ROOT_DIR / self.path.lstrip("/")
                 if fpath.exists():
                     mime = "application/pdf" if fpath.suffix == ".pdf" else "application/octet-stream"
                     self._serve_file(fpath, mime)
                 else:
                     self.send_error(404)
-            elif self.path.startswith("/css/") or self.path.startswith("/js/"):
+            elif path.startswith("/css/") or path.startswith("/js/"):
                 # Arquivos estaticos modulares do frontend
                 fpath = ROOT_DIR / "frontend" / self.path.lstrip("/")
                 if fpath.exists():
@@ -123,13 +128,14 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
+            path = self._clean_path()
             handlers = {
                 "/api/run-once": lambda: self._start_analysis("once"),
                 "/api/run-ten": lambda: self._start_analysis("ten"),
                 "/api/upload": self._handle_upload,
                 "/api/clear-all": self._handle_clear,
             }
-            handler = handlers.get(self.path)
+            handler = handlers.get(path)
             if handler:
                 handler()
             else:

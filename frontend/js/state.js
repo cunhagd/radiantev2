@@ -38,7 +38,6 @@ function initDOM() {
   DOM.kpiTotal = document.getElementById('kpi-total');
 
   DOM.downloadPdfBtn = document.getElementById('download-pdf-btn');
-  DOM.auditContent = document.getElementById('audit-content');
 
   DOM.obsCard = document.getElementById('observability-card');
   DOM.metricsCostTotal = document.getElementById('metrics-cost-total');

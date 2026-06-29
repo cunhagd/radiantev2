@@ -70,10 +70,6 @@ const baseHTML = `
       <div class="download-row">
         <a href="#" download class="btn btn-download" id="download-pdf-btn">Baixar Relatorio PDF</a>
       </div>
-      <div class="audit-section">
-        <div class="audit-toggle" id="audit-toggle">Ver Relatorio de Auditoria</div>
-        <div class="audit-body" id="audit-content">Carregando...</div>
-      </div>
     </div>
 
     <div class="card" id="observability-card" style="display: none;">

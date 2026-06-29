@@ -57,20 +57,6 @@ window.API = {};
     }
   };
 
-  /** Carrega log de auditoria */
-  API.loadAuditLog = async function () {
-    try {
-      const text = await API.fetchText('/api/audit-log');
-      if (text) {
-        DOM.auditContent.innerText = text;
-      } else {
-        DOM.auditContent.innerText = "Nenhum relatorio de auditoria gerado ainda. Execute uma analise 10x para criar o log de auditoria.";
-      }
-    } catch (e) {
-      console.error("Erro ao carregar log de auditoria", e);
-    }
-  };
-
   /** Inicia analise e retorna resposta */
   API.startAnalysis = async function (mode) {
     const endpoint = mode === 'once' ? '/api/run-once' : '/api/run-ten';

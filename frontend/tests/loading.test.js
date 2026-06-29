@@ -391,9 +391,8 @@ describe('Loading Module', () => {
       // Mock API.checkStatus para retornar completed na primeira chamada
       API.checkStatus = vi.fn().mockResolvedValue({ status: 'completed' });
 
-      // Mock API.loadLastResult e loadAuditLog
+      // Mock API.loadLastResult
       API.loadLastResult = vi.fn().mockResolvedValue(null);
-      API.loadAuditLog = vi.fn().mockResolvedValue(undefined);
 
       Loading.runAnalysis('once');
 
@@ -410,7 +409,6 @@ describe('Loading Module', () => {
 
       API.checkStatus = vi.fn().mockResolvedValue({ status: 'completed' });
       API.loadLastResult = vi.fn().mockResolvedValue(null);
-      API.loadAuditLog = vi.fn().mockResolvedValue(undefined);
 
       Loading.runAnalysis('ten');
 

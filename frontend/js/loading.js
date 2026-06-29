@@ -294,7 +294,6 @@ window.Loading = {};
 
               // Recarrega dados
               await API.loadLastResult();
-              await API.loadAuditLog();
 
               setTimeout(function () { cleanupLoading(); }, 600);
             } else if (statusData && statusData.status === 'error') {

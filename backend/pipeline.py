@@ -347,6 +347,11 @@ def run_once(config: Config, combined_context: str) -> dict:
     # Salva resultados no S3
     save_stage_files(config, "results", combined_context, result)
 
+    # Remove PDF antigo do modo 10x para evitar divergencia
+    old_pdf_10x = ROOT_DIR / "data" / "relatorio_consolidado_10x.pdf"
+    if old_pdf_10x.exists():
+        old_pdf_10x.unlink()
+
     # Gera PDF do relatorio
     report_text = (
         f"# Relatorio de Analise Juridica\n\n"
@@ -595,6 +600,11 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
         json.dumps(parsed_json, indent=2, ensure_ascii=False).encode("utf-8"),
         "results/consolidado_10x.json",
     )
+
+    # Remove PDF antigo do modo once para evitar divergencia
+    old_pdf_once = ROOT_DIR / "data" / "relatorio_consolidado.pdf"
+    if old_pdf_once.exists():
+        old_pdf_once.unlink()
 
     # Gera PDF consolidado
     report_lines = ["# Relatorio Consolidado - 10 Analises\n"]

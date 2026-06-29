@@ -30,6 +30,7 @@ class Config:
 
     bearer_token: str = ""
     aws_region: str = "us-east-1"
+    aws_profile: str = ""
     model_id: str = "xai.grok-4.3"
     bucket_name: str = "radiante-final"
     grok_price_input: float = 0.0
@@ -137,6 +138,7 @@ def load_config() -> Config:
 
     return Config(
         aws_region=env.get("REGION", "us-east-1"),
+        aws_profile=os.getenv("AWS_PROFILE", ""),
         bearer_token=env.get("AWS_BEARER_TOKEN_BEDROCK", ""),
         model_id=env.get("BEDROCK_MODEL_ID", "xai.grok-4.3"),
         grok_price_input=float(env.get("GROK_PRICE_INPUT", "0") or "0"),

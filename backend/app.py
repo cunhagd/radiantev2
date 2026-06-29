@@ -45,14 +45,33 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                         self._serve_json(cached)
                         return
 
-                # 2. Fallback: tenta S3 (consolidado_10x.json primeiro, depois resultado_final.json)
+                # 2. Fallback: tenta arquivo local (consolidado_10x.json, depois resultado_final.json)
+                local_consolidado = ROOT_DIR / "data" / "consolidado_10x.json"
+                local_resultado = ROOT_DIR / "data" / "resultado_final.json"
+                parsed = None
+                if local_consolidado.exists():
+                    try:
+                        parsed = json.loads(local_consolidado.read_text(encoding="utf-8"))
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                if not parsed and local_resultado.exists():
+                    try:
+                        parsed = json.loads(local_resultado.read_text(encoding="utf-8"))
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                if parsed:
+                    with jobs_lock:
+                        ANALYSIS_JOBS["last_result"] = parsed
+                    self._serve_json(parsed)
+                    return
+
+                # 3. Fallback: tenta S3
                 data = download_file(config, "results/consolidado_10x.json")
                 if not data:
                     data = download_file(config, "results/resultado_final.json")
                 if data:
                     try:
                         parsed = json.loads(data)
-                        # Atualiza cache
                         with jobs_lock:
                             ANALYSIS_JOBS["last_result"] = parsed
                         self._serve_json(parsed)
@@ -61,16 +80,17 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                 else:
                     self._serve_json({"status": "no_data", "message": "Nenhum resultado encontrado"})
             elif self.path == "/api/audit-log":
+                # 1. Tenta arquivo local primeiro (nao depende de S3)
+                local_audit = ROOT_DIR / "data" / "auditoria_10x.md"
+                if local_audit.exists():
+                    self._serve_file(local_audit, "text/markdown; charset=utf-8")
+                    return
+                # 2. Fallback: tenta S3
                 data = download_file(config, "results/auditoria_10x.md")
                 if data:
                     self._serve_bytes(data, "text/markdown; charset=utf-8")
                 else:
-                    # Tenta relatorio de auditoria local (modo once)
-                    local_audit = ROOT_DIR / "data" / "relatorio_consolidado.pdf"
-                    if local_audit.exists():
-                        self._serve_json({"status": "ok", "message": "Relatorio consolidado disponivel em /data/relatorio_consolidado.pdf"})
-                    else:
-                        self._serve_json({"status": "no_data"})
+                    self._serve_json({"status": "no_data"})
             elif self.path == "/api/fallback-status":
                 self._serve_json(get_fallback_status())
             elif self.path == "/api/metrics":

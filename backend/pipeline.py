@@ -293,7 +293,7 @@ def save_stage_files(
     combined_context: str,
     data: dict,
 ) -> None:
-    """Salva arquivos de cada etapa no S3.
+    """Salva arquivos de cada etapa no S3 e localmente.
 
     Args:
         config: Configuracao do sistema.
@@ -318,10 +318,13 @@ def save_stage_files(
         s3_key = f"{s3_prefix}/{stage_name}_completo.md"
         upload_file(config, content.encode("utf-8"), s3_key)
 
-    # Salva JSON final
+    # Salva JSON final (local + S3)
     json_data = json.dumps(
         data.get("parsed_json", {}), indent=2, ensure_ascii=False,
     )
+    local_json_path = ROOT_DIR / "data" / "resultado_final.json"
+    local_json_path.parent.mkdir(parents=True, exist_ok=True)
+    local_json_path.write_text(json_data, encoding="utf-8")
     upload_file(
         config, json_data.encode("utf-8"),
         f"{s3_prefix}/resultado_final.json",
@@ -578,7 +581,7 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
             f"results/etapa3_repeticao_{i}.md",
         )
 
-    # Gera relatorio de auditoria
+    # Gera relatorio de auditoria (local + S3)
     audit_lines = ["# Auditoria de 10 Rodadas (Modo Otimizado)\n"]
     audit_lines.append(f"## Etapas 1 e 2 (unicas)\n")
     audit_lines.append(f"- Etapa 1: {etapa1_metrics.prompt_tokens if etapa1_metrics else 0} tokens\n")
@@ -589,17 +592,20 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
     audit_lines.append("")
     audit_lines.append(f"\n## Consolidacao\n")
     audit_lines.append(f"```json\n{json.dumps(parsed_json, indent=2, ensure_ascii=False)}\n```\n")
-    upload_file(
-        config, "\n".join(audit_lines).encode("utf-8"),
-        "results/auditoria_10x.md",
-    )
+    audit_text = "\n".join(audit_lines)
+    # Salva localmente
+    audit_local_path = ROOT_DIR / "data" / "auditoria_10x.md"
+    audit_local_path.parent.mkdir(parents=True, exist_ok=True)
+    audit_local_path.write_text(audit_text, encoding="utf-8")
+    # Upload para S3 (fallback)
+    upload_file(config, audit_text.encode("utf-8"), "results/auditoria_10x.md")
 
-    # Salva JSON consolidado
-    upload_file(
-        config,
-        json.dumps(parsed_json, indent=2, ensure_ascii=False).encode("utf-8"),
-        "results/consolidado_10x.json",
-    )
+    # Salva JSON consolidado (local + S3)
+    json_consolidado = json.dumps(parsed_json, indent=2, ensure_ascii=False).encode("utf-8")
+    json_local_path = ROOT_DIR / "data" / "consolidado_10x.json"
+    json_local_path.parent.mkdir(parents=True, exist_ok=True)
+    json_local_path.write_text(json_consolidado.decode("utf-8"), encoding="utf-8")
+    upload_file(config, json_consolidado, "results/consolidado_10x.json")
 
     # Remove PDF antigo do modo once para evitar divergencia
     old_pdf_once = ROOT_DIR / "data" / "relatorio_consolidado.pdf"

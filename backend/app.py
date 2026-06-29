@@ -146,10 +146,6 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
 
     def _run_analysis(self, mode: str) -> None:
         try:
-            # Garante que o profile AWS seja propagado para a thread
-            if config.aws_profile:
-                os.environ["AWS_PROFILE"] = config.aws_profile
-                os.environ["AWS_DEFAULT_PROFILE"] = config.aws_profile
             # Remove token poluente que pode estar no ambiente (ex: test-token)
             os.environ.pop("AWS_BEARER_TOKEN_BEDROCK", None)
 
@@ -163,6 +159,23 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                     parsed_data = result.get("data", {}).copy() if result.get("data") else {}
                     # Adiciona o nome do PDF gerado para o frontend usar
                     parsed_data["pdf_filename"] = "relatorio_consolidado_10x.pdf" if mode == "ten" else "relatorio_consolidado.pdf"
+                    # Inclui metricas consolidadas no JSON principal (FR-007)
+                    raw_metrics = result.get("metrics")
+                    if raw_metrics:
+                        metrics_dict = {
+                            "prompt_tokens": raw_metrics.prompt_tokens,
+                            "completion_tokens": raw_metrics.completion_tokens,
+                            "cache_tokens": raw_metrics.cache_tokens,
+                            "cost_input": raw_metrics.cost_input,
+                            "cost_output": raw_metrics.cost_output,
+                            "cost_cache": raw_metrics.cost_cache,
+                            "cost_total": raw_metrics.cost_total,
+                        }
+                        # Inclui runs individuais no modo 10x
+                        run_metrics_list = result.get("run_metrics_list")
+                        if run_metrics_list:
+                            metrics_dict["runs"] = run_metrics_list
+                        parsed_data["metrics"] = metrics_dict
                     ANALYSIS_JOBS.update(
                         status="completed",
                         message=json.dumps(parsed_data, ensure_ascii=False),

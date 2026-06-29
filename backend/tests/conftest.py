@@ -21,7 +21,10 @@ from backend.config import Config
 
 @pytest.fixture
 def mock_env() -> Generator[None, None, None]:
-    """Configura variaveis de ambiente minimas para teste (Grok/Mantle)."""
+    """Configura variaveis de ambiente minimas para teste (Grok/Mantle).
+
+    Patcheia load_dotenv para nao sobrescrever com .env real.
+    """
     env_vars = {
         "AWS_BEARER_TOKEN_BEDROCK": "test-bearer-token",
         "BEDROCK_MODEL_ID": "xai.grok-4.3",
@@ -35,7 +38,8 @@ def mock_env() -> Generator[None, None, None]:
     }
     for k, v in env_vars.items():
         os.environ[k] = v
-    yield
+    with patch("backend.config.load_dotenv"):
+        yield
     for k in env_vars:
         os.environ.pop(k, None)
 

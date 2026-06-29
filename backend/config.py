@@ -50,7 +50,7 @@ def _load_env() -> dict[str, str]:
         print("Copie .env.example para .env e preencha as configuracoes.", file=sys.stderr)
         sys.exit(1)
 
-    load_dotenv(env_path)
+    load_dotenv(env_path, override=True)
 
     result = {}
     for key in (

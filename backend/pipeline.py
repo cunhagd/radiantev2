@@ -20,7 +20,7 @@ from backend.config import Config, ROOT_DIR
 from backend.bedrock_client import run_llm_stage_streaming
 from backend.metrics import PipelineMetrics, merge_metrics, format_metrics_report
 from backend.progress import Progress
-from backend.s3_client import upload_file
+from backend.s3_client import upload_file, delete_files
 
 
 def extract_json_from_markdown(text: str) -> Optional[dict]:
@@ -372,11 +372,13 @@ def run_once(config: Config, combined_context: str) -> dict:
     if result is None:
         return {"status": "error", "message": "Pipeline falhou"}
 
-    # Salva resultados no S3
-    save_stage_files(config, "results", combined_context, result)
-
     # Remove artefatos do modo oposto (10x) antes de gerar novos
     clean_artefatos_anteriores("once")
+    delete_files(config, "results/relatorio_consolidado_10x.pdf")
+    delete_files(config, "results/consolidado_10x.json")
+
+    # Salva resultados no S3
+    save_stage_files(config, "results", combined_context, result)
 
     # Gera PDF do relatorio
     report_text = (
@@ -623,6 +625,11 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
     # Upload para S3 (fallback)
     upload_file(config, audit_text.encode("utf-8"), "results/auditoria_10x.md")
 
+    # Remove artefatos do modo oposto (1x) antes de gerar novos
+    clean_artefatos_anteriores("ten")
+    delete_files(config, "results/relatorio_consolidado.pdf")
+    delete_files(config, "results/resultado_final.json")
+
     # Salva JSON consolidado (local + S3)
     json_obj = parsed_json.copy()
     json_obj["pdf_filename"] = "relatorio_consolidado_10x.pdf"
@@ -631,9 +638,6 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
     json_local_path.parent.mkdir(parents=True, exist_ok=True)
     json_local_path.write_text(json_consolidado.decode("utf-8"), encoding="utf-8")
     upload_file(config, json_consolidado, "results/consolidado_10x.json")
-
-    # Remove artefatos do modo oposto (1x) antes de gerar novos
-    clean_artefatos_anteriores("ten")
 
     # Gera PDF consolidado
     report_lines = ["# Relatorio Consolidado - 10 Analises\n"]

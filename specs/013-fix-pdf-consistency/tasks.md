@@ -138,3 +138,13 @@ Task: "T008 - Adicionar pdf_filename em pipeline.py run_once/run_ten_times"
 3. US3 → API informa pdf_filename
 4. US4 → Frontend sem heuristica
 5. Validacao final
+
+---
+
+## Phase 8: Convergence
+
+**Purpose**: Correcoes pos-implementacao identificadas pelo `/speckit-converge`.
+
+- [x] T012 [US2] Reordenar `run_once()` em `backend/pipeline.py`: `clean_artefatos_anteriores("once")` DEVE ser chamado **antes** de `save_stage_files()`, nao depois (FR-002, FR-007 — `partial`)
+- [x] T013 [US2] Reordenar `run_ten_times()` em `backend/pipeline.py`: `clean_artefatos_anteriores("ten")` DEVE ser chamado **antes** de escrever o JSON consolidado e gerar o PDF, nao depois (FR-002, FR-007 — `partial`)
+- [x] T014 [US2] Adicionar limpeza S3 do modo oposto em `run_once()` e `run_ten_times()` em `backend/pipeline.py`: apos limpeza local, deletar artefatos do modo oposto no S3 (`results/relatorio_consolidado[_10x].pdf`, `results/resultado_final.json`, `results/consolidado_10x.json`) via `delete_files()` ou `upload_file()` com sobrescrita — antes de fazer upload dos novos (FR-006 — `partial`)

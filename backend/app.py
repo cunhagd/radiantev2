@@ -184,8 +184,37 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
             self._serve_json({"status": "error", "message": "Content-Length ou X-Filename ausente"})
 
     def _handle_clear(self) -> None:
-        total = sum(delete_files(config, p) for p in ["docs/", "markdown_docs/", "results/", "runs/"])
-        self._serve_json({"status": "ok", "deleted_count": total})
+        # 1. Limpa diretorio local data/ (docs, markdown_docs, PDFs, JSONs, auditoria)
+        data_root = ROOT_DIR / "data"
+        if data_root.exists():
+            import shutil
+            for item in data_root.iterdir():
+                if item.is_dir():
+                    shutil.rmtree(item)
+                elif item.suffix in (".pdf", ".json", ".md"):
+                    item.unlink()
+            # Recria diretorios necessarios
+            (data_root / "docs").mkdir(parents=True, exist_ok=True)
+            (data_root / "markdown_docs").mkdir(parents=True, exist_ok=True)
+
+        # 2. Limpa bucket S3
+        total_s3 = sum(delete_files(config, p) for p in ["docs/", "markdown_docs/", "results/", "runs/"])
+
+        # 3. Reseta estado em memoria
+        with jobs_lock:
+            ANALYSIS_JOBS.update(
+                status="idle", message="", error_details="",
+                last_result=None,
+            )
+
+        # 4. Reseta progresso do pipeline
+        Progress.reset(total_runs=1)
+
+        # 5. Limpa historico de execucao
+        from backend.pipeline import clear_execution_history
+        clear_execution_history()
+
+        self._serve_json({"status": "ok", "message": "Sistema limpo com sucesso", "s3_deleted": total_s3})
 
     def _serve_json(self, data: dict) -> None:
         self._serve_bytes(json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")

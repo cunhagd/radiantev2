@@ -236,6 +236,8 @@
       Cifras.renderMetadata(data);
       Cifras.renderCifras(data);
       Metrics.renderMetrics(data);
+      // Bloqueia botoes exceto lixeira — ha dados na tela
+      UI.updateButtonsState('has_data');
     };
 
     // Event listeners
@@ -273,7 +275,14 @@
       });
 
       // Load data on startup
-      API.loadLastResult();
+      API.loadLastResult().then(function (data) {
+        // Se carregou dados validos, bloqueia botoes (exceto lixeira)
+        if (data) {
+          UI.updateButtonsState('has_data');
+        } else {
+          UI.updateButtonsState('initial');
+        }
+      });
       API.loadAuditLog();
     });
   </script>

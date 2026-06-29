@@ -50,8 +50,10 @@ window.API = {};
       if (typeof window.renderAll === 'function') {
         window.renderAll(data);
       }
+      return data && data.cifras ? data : null;
     } catch (e) {
       console.error("Erro ao carregar ultimo resultado", e);
+      return null;
     }
   };
 

@@ -16,29 +16,42 @@ class TestConfigLoading:
         assert config.bearer_token == "test-bearer-token"
         assert config.model_id == "xai.grok-4.3"
         assert config.grok_reasoning_effort == "high"
+        assert config.aws_access_key_id == "test-access-key"
+        assert config.aws_secret_access_key == "test-secret-key"
 
-    def test_load_config_missing_all_credentials_raises(self):
-        """Deve levantar erro se bearer token e AWS creds faltarem."""
-        from backend.config import _validate, _check_aws_credentials
-        # Simula que nao ha credenciais AWS
-        with patch("backend.config._check_aws_credentials", return_value=False):
-            missing = {}
-            try:
-                _validate(missing)
-                assert False, "Deveria ter saido"
-            except SystemExit:
-                pass
+    def test_load_config_missing_bearer_token_raises(self):
+        """Deve levantar erro se bearer token faltar."""
+        from backend.config import _validate
+        missing = {
+            "AWS_ACCESS_KEY_ID": "test-key",
+            "AWS_SECRET_ACCESS_KEY": "test-secret",
+        }
+        try:
+            _validate(missing)
+            assert False, "Deveria ter saido"
+        except SystemExit:
+            pass
 
-    def test_load_config_with_sso_succeeds(self):
-        """Deve aceitar config sem bearer token se houver AWS creds."""
-        from backend.config import load_config
-        with patch("backend.config._load_env", return_value={
+    def test_load_config_missing_access_keys_does_not_raise(self):
+        """Nao deve levantar erro se access keys faltarem (IMDS/EC2)."""
+        from backend.config import _validate, load_config
+        import io, sys
+        # Simula que bearer token existe mas access keys nao
+        missing = {
+            "AWS_BEARER_TOKEN_BEDROCK": "test-token",
             "REGION": "us-east-1",
-            "BEDROCK_MODEL_ID": "xai.grok-4.3",
-        }), patch("backend.config._check_aws_credentials", return_value=True):
-            c = load_config()
-        assert c.model_id == "xai.grok-4.3"
-        assert c.bearer_token == ""
+        }
+        # Nao deve chamar sys.exit
+        _validate(missing)
+
+    def test_sanitize_env_removes_credentials(self):
+        """Deve remover AWS_ACCESS_KEY_ID e SECRET do os.environ."""
+        os.environ["AWS_ACCESS_KEY_ID"] = "should-be-removed"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "should-be-removed"
+        from backend.config import _sanitize_env
+        _sanitize_env()
+        assert "AWS_ACCESS_KEY_ID" not in os.environ
+        assert "AWS_SECRET_ACCESS_KEY" not in os.environ
 
     def test_root_dir_exists(self):
         """ROOT_DIR deve apontar para diretorio existente."""
@@ -60,6 +73,8 @@ class TestConfigLoading:
         from backend.config import load_config
         with patch("backend.config._load_env", return_value={
             "AWS_BEARER_TOKEN_BEDROCK": "test",
+            "AWS_ACCESS_KEY_ID": "test-key",
+            "AWS_SECRET_ACCESS_KEY": "test-secret",
         }):
             c = load_config()
         assert c.aws_region == "us-east-1"
@@ -68,6 +83,8 @@ class TestConfigLoading:
         """Config deve ter todos os campos esperados."""
         assert hasattr(test_config, "bearer_token")
         assert hasattr(test_config, "aws_region")
+        assert hasattr(test_config, "aws_access_key_id")
+        assert hasattr(test_config, "aws_secret_access_key")
         assert hasattr(test_config, "model_id")
         assert hasattr(test_config, "bucket_name")
         assert hasattr(test_config, "grok_price_input")

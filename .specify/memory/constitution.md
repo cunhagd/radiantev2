@@ -125,19 +125,17 @@ plano de implementação.
 ### Infraestrutura AWS
 
 - **S3**: Bucket `radiante-final` para armazenamento de documentos e resultados
-- **Bedrock**: Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6`) como modelo
-  primário via Converse API com streaming e cache de prompt
+- **Bedrock Mantle**: Grok 4.3 (`xai.grok-4.3`) como modelo primario via OpenAI SDK com Bearer Token, fallback regional (us-east-1 → us-west-2 → us-east-2) e retry com backoff exponencial
 - **Textract**: OCR para PDFs escaneados
-- **EC2**: Servidor Ubuntu para deploy em produção
-- **CI/CD**: GitHub Actions com rsync + SSH para EC2 na branch `main-poc`
+- **EC2**: Servidor Ubuntu para deploy em producao, acesso via SSM Session Manager
+- **CI/CD**: GitHub Actions com OIDC + SSM SendCommand para EC2 na branch `main-poc`
 
 ### Modelos de IA
 
-- **Primário**: `us.anthropic.claude-sonnet-4-6` (cross-region US)
-- **Fallback**: `us.anthropic.claude-opus-4-6-v1` com rotação regional
-  (us-west-2 → us-east-1 → eu-central-1)
-- **Alternativo**: Grok via Bedrock Mantle (`OpenAI(bedrock-mantle...)`)
-- **Configuração**: `temperature=0.0`, retry com backoff exponencial (2s, 4s, 8s)
+- **Primario**: `xai.grok-4.3` via Bedrock Mantle (OpenAI SDK)
+- **Fallback regional**: us-east-1 → us-west-2 → us-east-2 com retry (2s, 4s, 8s)
+- **Autenticacao**: Bearer Token (AWS_BEARER_TOKEN_BEDROCK) do .env
+- **Configuracao**: `temperature=0.0`, `reasoning` configurado pelo .env (`GROK_REASONING_EFFORT`)
 
 ## Estrutura de Diretórios e Artefatos
 

@@ -26,6 +26,8 @@ def mock_env() -> Generator[None, None, None]:
         "AWS_BEARER_TOKEN_BEDROCK": "test-bearer-token",
         "BEDROCK_MODEL_ID": "xai.grok-4.3",
         "AWS_DEFAULT_REGION": "us-east-1",
+        "AWS_ACCESS_KEY_ID": "test-access-key",
+        "AWS_SECRET_ACCESS_KEY": "test-secret-key",
         "GROK_PRICE_INPUT": "0.00000125",
         "GROK_PRICE_OUTPUT": "0.00000250",
         "GROK_PRICE_CACHE_READ": "0.00000020",

@@ -635,6 +635,200 @@ Possíveis causas:
 
 ---
 
+---
+
+## 13. Resolvendo Mixed Content (HTTPS no Backend)
+
+O erro `Mixed Content: ... was loaded over HTTPS, but requested an insecure resource 'http://...'` ocorre porque o **frontend está no HTTPS** (Amplify) e tenta chamar o **backend via HTTP**. O navegador bloqueia.
+
+A solução definitiva é colocar o backend atrás de HTTPS. A melhor forma é criar um **Application Load Balancer (ALB)** com certificado SSL via AWS Certificate Manager.
+
+### Opção A (Recomendada): Application Load Balancer com HTTPS
+
+1. **Acesse o Console AWS → CloudFormation**
+2. **Crie uma stack** com o template abaixo (salve como `alb-https.yaml`):
+
+```yaml
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Radiante v2 - ALB com HTTPS"
+
+Parameters:
+  InstanceId:
+    Type: AWS::EC2::Instance::Id
+    Default: i-0df8ba5134b0e0b28
+  InstancePort:
+    Type: Number
+    Default: 80
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+
+Resources:
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Radiante ALB SG
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: radiante-alb
+      Scheme: internet-facing
+      Type: application
+      SecurityGroups: [!Ref ALBSecurityGroup]
+      Subnets: !Ref SubnetIds
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: radiante-tg
+      Port: !Ref InstancePort
+      Protocol: HTTP
+      TargetType: instance
+      VpcId: !Ref VpcId
+      HealthCheckPath: /api/status
+      Matcher: { HttpCode: "200,202" }
+
+  TargetAttachment:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
+    Properties:
+      TargetGroupArn: !Ref TargetGroup
+      TargetId: !Ref InstanceId
+      Port: !Ref InstancePort
+
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: "443"
+            Host: "#{host}"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: HTTP_301
+
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates:
+        - CertificateArn: !Ref Certificate
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: radiante.emaster.info
+      SubjectAlternativeNames:
+        - "*.radiante.emaster.info"
+      ValidationMethod: DNS
+
+Outputs:
+  ALBDnsName:
+    Value: !GetAtt LoadBalancer.DNSName
+```
+
+3. **No formulário de criação**, preencha:
+   - **Stack name**: `radiante-alb-https`
+   - **InstanceId**: `i-0df8ba5134b0e0b28`
+   - **InstancePort**: `80`
+   - **VpcId**: Selecione a VPC onde a EC2 está
+   - **SubnetIds**: Selecione **2 subnets públicas** (pelo menos)
+
+4. **Avance** e confirme que a stack vai criar recursos IAM
+
+5. **Valide o certificado SSL**: O ACM vai pedir validação via DNS. Crie o registro CNAME no seu provedor de domínio (o nome do registro aparece na stack).
+
+6. Após a stack ser criada, pegue o **DNS do ALB** (ex: `radiante-alb-123456.us-east-1.elb.amazonaws.com`).
+
+7. **No Amplify**, configure a regra de rewrite:
+```json
+{
+  "source": "/api/<*>",
+  "target": "https://<DNS_DO_ALB>/api/<*>",
+  "status": "200",
+  "condition": ""
+}
+```
+
+8. **OBS**: Se preferir, pode apontar o `API_BASE` diretamente para o DNS do ALB:
+   - No console Amplify → Environment variables
+   - Adicione: `API_BASE` = `https://<DNS_DO_ALB>`
+
+> **Nota**: O certificado do ACM só funciona para o domínio `radiante.emaster.info` (ou subdomínios). O DNS do ALB (`elb.amazonaws.com`) **não pode receber certificado ACM**. Por isso o template usa o domínio `*.radiante.emaster.info` — você precisa validar o domínio.
+
+### Opção B (Alternativa): Let's Encrypt + Caddy na EC2
+
+Se preferir não criar ALB, pode configurar HTTPS diretamente na EC2 usando **Caddy** (que obtém certificado Let's Encrypt automaticamente).
+
+**Requisito**: Ter um subdomínio apontando para o IP da EC2 (ex: `api.radiante.emaster.info`).
+
+1. **Crie um registro DNS** no seu provedor de domínio:
+   - **Tipo**: A
+   - **Nome**: `api`
+   - **Valor**: `18.208.190.159` (IP público da EC2)
+   - **TTL**: 300 (ou o mínimo)
+
+2. **Conecte na EC2 via Session Manager** e execute:
+```bash
+cd /opt/radiante
+sudo python3 dpbc.py --ssl
+```
+
+3. O Caddy vai:
+   - Obter certificado SSL do Let's Encrypt para `api.radiante.emaster.info`
+   - Fazer proxy reverso para o backend na porta 8000
+   - Servir HTTPS automaticamente
+
+4. **No Amplify**, adicione a regra de rewrite:
+```json
+{
+  "source": "/api/<*>",
+  "target": "https://api.radiante.emaster.info/api/<*>",
+  "status": "200",
+  "condition": ""
+}
+```
+
+5. **Remova a variável `API_BASE`** do Amplify (ou deixe vazia) para que o `api.js` use URLs relativas ao mesmo domínio — o Amplify vai fazer o rewrite para o backend.
+
+### Verificação
+
+Após configurar HTTPS, teste:
+
+```bash
+# Do terminal local
+curl -I https://<DNS_DO_ALB>/api/status
+# Ou
+curl -I https://api.radiante.emaster.info/api/status
+# Deve retornar HTTP/2 200
+```
+
+Depois, recarregue o frontend em `https://radiante.emaster.info/` e tente fazer upload. O erro Mixed Content deve desaparecer.
+
+---
+
 ## Apêndice: Como criar a IAM Role para CI/CD (se não existir)
 
 Se a Role `github-actions-radiante` ainda não foi criada, você pode usar o script automatizado:

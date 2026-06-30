@@ -308,6 +308,135 @@ def cmd_status() -> None:
     print()
 
 
+def cmd_ssl() -> None:
+    """Configura HTTPS na EC2 via Caddy (proxy reverso com Let's Encrypt).
+
+    Requer que voce crie um registro DNS apontando um subdominio
+    (ex: api.radiante.emaster.info) para o IP publico da EC2.
+
+    Uso:
+      1. Crie o registro DNS manualmente:
+         api.radiante.emaster.info  CNAME ou A  -> <IP_DA_EC2>
+      2. Execute:
+         sudo python3 /opt/radiante/dpbc.py --ssl
+    """
+    _require_root()
+
+    print(f"\n{'=' * 55}")
+    print(" dpbc.py — Configurando HTTPS com Caddy")
+    print(f"{'=' * 55}\n")
+
+    API_DOMAIN = "api.radiante.emaster.info"
+
+    # ── 1. Parar container nginx (porta 80 liberada para Caddy) ────
+    print("[1/5] Parando container frontend (nginx) para liberar porta 80...")
+    os.chdir(APP_DIR)
+    _run(["docker", "compose", "stop", "frontend"], capture=False)
+    print("  OK\n")
+
+    # ── 2. Instalar Caddy ───────────────────────────────────────────
+    print("[2/5] Instalando Caddy...")
+    r = _run(["which", "caddy"])
+    if r.returncode == 0:
+        print("  Caddy ja instalado.")
+    else:
+        PKG_MANAGER = _detect_pkg_manager()
+        if PKG_MANAGER in ("dnf", "yum"):
+            _run([PKG_MANAGER, "install", "-y", "caddy"], capture=False)
+        else:
+            # Instalar via script oficial
+            _run(["sh", "-c",
+                  "curl -fsSL https://getcaddy.com | bash"],
+                 capture=False)
+    print("  OK\n")
+
+    # ── 3. Criar Caddyfile ──────────────────────────────────────────
+    print("[3/5] Criando Caddyfile em /etc/caddy/Caddyfile...")
+
+    caddyfile = f"""{API_DOMAIN} {{
+    # Proxy reverso para o backend no Docker
+    reverse_proxy localhost:8000 {{
+        header_up Host {{host}}
+        header_up X-Real-IP {{remote_host}}
+        header_up X-Forwarded-For {{remote_host}}
+        header_up X-Forwarded-Proto https
+    }}
+
+    # Logs
+    log {{
+        output file /var/log/caddy/radiante-api.log
+        format json
+    }}
+
+    # Rate limiting basico
+    rate_limit {{
+        zone api {{
+            key {{remote_host}}
+            events 100
+            window 1m
+        }}
+    }}
+}}
+
+# Redirecionar HTTP para HTTPS em todas as portas
+http://{API_DOMAIN} {{
+    redir https://{{host}}{{uri}} permanent
+}}
+"""
+    _run(["mkdir", "-p", "/etc/caddy"])
+    _run(["mkdir", "-p", "/var/log/caddy"])
+    with open("/etc/caddy/Caddyfile", "w") as f:
+        f.write(caddyfile)
+    _run(["chmod", "644", "/etc/caddy/Caddyfile"])
+    print("  OK\n")
+
+    # ── 4. Configurar systemd para Caddy ────────────────────────────
+    print("[4/5] Configurando servico systemd Caddy...")
+    _run(["systemctl", "enable", "caddy"])
+    _run(["systemctl", "restart", "caddy"])
+    print("  OK\n")
+
+    # ── 5. Health check ────────────────────────────────────────────
+    print("[5/5] Verificando se Caddy esta rodando...")
+    import time
+    for i in range(10):
+        time.sleep(2)
+        r = _run(["systemctl", "is-active", "caddy"])
+        status = r.stdout.strip() if r.returncode == 0 else "inactive"
+        if status == "active":
+            print(f"  -> Caddy ativo e servindo HTTPS em https://{API_DOMAIN}")
+            break
+        print(f"  Tentativa {i+1}/10 (status: {status})...")
+    else:
+        print("  AVISO: Caddy pode nao ter iniciado corretamente.")
+        print("  Verifique: systemctl status caddy")
+        print("  Logs: journalctl -u caddy -n 50 --no-pager")
+    print()
+
+    # ── Teste ────────────────────────────────────────────────────────
+    print("Testando conexao HTTPS via localhost...")
+    r = _run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+              "http://localhost:8000/api/status"])
+    code = r.stdout.strip() if r.returncode == 0 else "000"
+    print(f"  Backend local (HTTP): {code}")
+
+    print()
+    print(f"{'=' * 55}")
+    print(" HTTPS configurado!")
+    print(f" URL: https://{API_DOMAIN}")
+    print(f" Proxando para: http://localhost:8000")
+    print()
+    print(" ANTES DE USAR:")
+    print(f" 1. Crie o registro DNS: {API_DOMAIN} -> <IP_PUBLICO_EC2>")
+    print(" 2. No Amplify, mude API_BASE para https://api.radiante.emaster.info")
+    print(" 3. Ou use: https://api.radiante.emaster.info no custom rewrite")
+    print()
+    print(" Para voltar ao modo HTTP:")
+    print("  sudo systemctl stop caddy")
+    print("  sudo docker compose -f /opt/radiante/docker-compose.yml start frontend")
+    print(f"{'=' * 55}")
+
+
 def cmd_logs() -> None:
     """Exibe logs do backend em tempo real."""
     _require_root()
@@ -382,6 +511,7 @@ def main() -> None:
     parser.add_argument("--update", action="store_true", help="Atualizar backend com git pull + rebuild")
     parser.add_argument("--status", action="store_true", help="Exibir status dos servicos")
     parser.add_argument("--logs", action="store_true", help="Exibir logs em tempo real")
+    parser.add_argument("--ssl", action="store_true", help="Configurar HTTPS via Caddy (requer DNS)")
     args = parser.parse_args()
 
     if args.setup:
@@ -392,6 +522,8 @@ def main() -> None:
         cmd_status()
     elif args.logs:
         cmd_logs()
+    elif args.ssl:
+        cmd_ssl()
     else:
         parser.print_help()
 

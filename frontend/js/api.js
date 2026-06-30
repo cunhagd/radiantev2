@@ -7,35 +7,43 @@
 window.API = {};
 
 (function () {
-  const API_BASE = window.API_BASE || (
-    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? "http://localhost:8000"
-      : "https://jtuuxek832.execute-api.us-east-1.amazonaws.com"
-  );
+  var API_BASE = window.API_BASE || '';
+
+  // Se API_BASE for URL relativa ou vazia, endpoints sao resolvidos
+  // contra o mesmo dominio (necessita de proxy reverso no Amplify ou nginx)
+  if (!API_BASE) {
+    var isLocal = window.location.hostname === 'localhost' ||
+                  window.location.hostname === '127.0.0.1';
+    API_BASE = isLocal ? 'http://localhost:8000' : '';
+  }
 
   API.BASE = API_BASE;
 
+  function apiUrl(endpoint) {
+    return API_BASE ? API_BASE + endpoint : endpoint;
+  }
+
   API.fetchJSON = async function (endpoint) {
-    const res = await fetch(API_BASE + endpoint);
+    var res = await fetch(apiUrl(endpoint));
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
   };
 
   API.fetchText = async function (endpoint) {
-    const res = await fetch(API_BASE + endpoint);
+    var res = await fetch(apiUrl(endpoint));
     if (!res.ok) return null;
     return res.text();
   };
 
   API.post = async function (endpoint, body) {
-    return fetch(API_BASE + endpoint, {
+    return fetch(apiUrl(endpoint), {
       method: 'POST',
       body: body,
     });
   };
 
   API.uploadFile = async function (file) {
-    return fetch(API_BASE + '/api/upload', {
+    return fetch(apiUrl('/api/upload'), {
       method: 'POST',
       headers: {
         'X-Filename': encodeURIComponent(file.name),
@@ -48,7 +56,7 @@ window.API = {};
   /** Carrega ultimo resultado e chama callback de render */
   API.loadLastResult = async function () {
     try {
-      const data = await API.fetchJSON('/api/last-result');
+      var data = await API.fetchJSON('/api/last-result');
       if (typeof window.renderAll === 'function') {
         window.renderAll(data);
       }
@@ -61,7 +69,7 @@ window.API = {};
 
   /** Inicia analise e retorna resposta */
   API.startAnalysis = async function (mode) {
-    const endpoint = mode === 'once' ? '/api/run-once' : '/api/run-ten';
+    var endpoint = mode === 'once' ? '/api/run-once' : '/api/run-ten';
     return API.post(endpoint);
   };
 

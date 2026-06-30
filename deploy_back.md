@@ -641,191 +641,169 @@ Possíveis causas:
 
 O erro `Mixed Content: ... was loaded over HTTPS, but requested an insecure resource 'http://...'` ocorre porque o **frontend está no HTTPS** (Amplify) e tenta chamar o **backend via HTTP**. O navegador bloqueia.
 
-A solução definitiva é colocar o backend atrás de HTTPS. A melhor forma é criar um **Application Load Balancer (ALB)** com certificado SSL via AWS Certificate Manager.
+A solução para MVP é usar o **ngrok** — um túnel HTTPS gratuito que não precisa de DevOps, DNS ou certificados.
 
-### Opção A (Recomendada): Application Load Balancer com HTTPS
+### ngrok — túnel HTTPS gratuito
 
-1. **Acesse o Console AWS → CloudFormation**
-2. **Crie uma stack** com o template abaixo (salve como `alb-https.yaml`):
+> ⏱ **5 minutos** • Zero custo • Zero dependência de DevOps • Tudo via SSM
 
-```yaml
-AWSTemplateFormatVersion: "2010-09-09"
-Description: "Radiante v2 - ALB com HTTPS"
+O **ngrok** cria um túnel HTTPS para o seu backend local (localhost:8000). O Amplify chama a URL do ngrok em vez do IP direto, resolvendo o Mixed Content.
 
-Parameters:
-  InstanceId:
-    Type: AWS::EC2::Instance::Id
-    Default: i-0df8ba5134b0e0b28
-  InstancePort:
-    Type: Number
-    Default: 80
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-
-Resources:
-  ALBSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Radiante ALB SG
-      VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-
-  LoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Name: radiante-alb
-      Scheme: internet-facing
-      Type: application
-      SecurityGroups: [!Ref ALBSecurityGroup]
-      Subnets: !Ref SubnetIds
-
-  TargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      Name: radiante-tg
-      Port: !Ref InstancePort
-      Protocol: HTTP
-      TargetType: instance
-      VpcId: !Ref VpcId
-      HealthCheckPath: /api/status
-      Matcher: { HttpCode: "200,202" }
-
-  TargetAttachment:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
-    Properties:
-      TargetGroupArn: !Ref TargetGroup
-      TargetId: !Ref InstanceId
-      Port: !Ref InstancePort
-
-  HTTPListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref LoadBalancer
-      Port: 80
-      Protocol: HTTP
-      DefaultActions:
-        - Type: redirect
-          RedirectConfig:
-            Protocol: HTTPS
-            Port: "443"
-            Host: "#{host}"
-            Path: "/#{path}"
-            Query: "#{query}"
-            StatusCode: HTTP_301
-
-  HTTPSListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref LoadBalancer
-      Port: 443
-      Protocol: HTTPS
-      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
-      Certificates:
-        - CertificateArn: !Ref Certificate
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref TargetGroup
-
-  Certificate:
-    Type: AWS::CertificateManager::Certificate
-    Properties:
-      DomainName: radiante.emaster.info
-      SubjectAlternativeNames:
-        - "*.radiante.emaster.info"
-      ValidationMethod: DNS
-
-Outputs:
-  ALBDnsName:
-    Value: !GetAtt LoadBalancer.DNSName
+```
+Frontend (Amplify)                     Ngrok Tunnel                    EC2
+https://radiante.emaster.info          https://abc.ngrok-free.app      http://localhost:8000
+       │                                       │                            │
+       │  fetch /api/upload ─────────────────►►►│  proxy reverso ──────────►│  backend Python
+       │                                       │                            │
+       │  HTTPS → HTTPS (OK!)                  │  HTTPS → HTTP (ok)         │
 ```
 
-3. **No formulário de criação**, preencha:
-   - **Stack name**: `radiante-alb-https`
-   - **InstanceId**: `i-0df8ba5134b0e0b28`
-   - **InstancePort**: `80`
-   - **VpcId**: Selecione a VPC onde a EC2 está
-   - **SubnetIds**: Selecione **2 subnets públicas** (pelo menos)
+#### Passo a passo
 
-4. **Avance** e confirme que a stack vai criar recursos IAM
+##### 1. Conecte na EC2 via Session Manager
 
-5. **Valide o certificado SSL**: O ACM vai pedir validação via DNS. Crie o registro CNAME no seu provedor de domínio (o nome do registro aparece na stack).
+Vá no Console AWS → **Systems Manager** → **Session Manager** → **Start session** → Selecione `i-0df8ba5134b0e0b28`
 
-6. Após a stack ser criada, pegue o **DNS do ALB** (ex: `radiante-alb-123456.us-east-1.elb.amazonaws.com`).
+##### 2. Instale o ngrok (Amazon Linux 2023)
 
-7. **No Amplify**, configure a regra de rewrite:
-```json
-{
-  "source": "/api/<*>",
-  "target": "https://<DNS_DO_ALB>/api/<*>",
-  "status": "200",
-  "condition": ""
-}
+```bash
+# Verificar se é Amazon Linux 2023
+cat /etc/os-release | head -3
+
+# Baixar ngrok
+curl -sSL -o /tmp/ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip
+
+# Descompactar e mover para /usr/local/bin
+sudo unzip -o /tmp/ngrok.zip -d /usr/local/bin/
+sudo chmod +x /usr/local/bin/ngrok
+
+# Limpar
+rm /tmp/ngrok.zip
+
+# Verificar instalacao
+ngrok version
 ```
 
-8. **OBS**: Se preferir, pode apontar o `API_BASE` diretamente para o DNS do ALB:
-   - No console Amplify → Environment variables
-   - Adicione: `API_BASE` = `https://<DNS_DO_ALB>`
+##### 3. Verifique se o backend está rodando
 
-> **Nota**: O certificado do ACM só funciona para o domínio `radiante.emaster.info` (ou subdomínios). O DNS do ALB (`elb.amazonaws.com`) **não pode receber certificado ACM**. Por isso o template usa o domínio `*.radiante.emaster.info` — você precisa validar o domínio.
+```bash
+curl -s http://localhost:8000/api/status
+# Deve retornar algo como {"status":"ok", "mode":"api", ...}
+```
 
-### Opção B (Alternativa): Let's Encrypt + Caddy na EC2
-
-Se preferir não criar ALB, pode configurar HTTPS diretamente na EC2 usando **Caddy** (que obtém certificado Let's Encrypt automaticamente).
-
-**Requisito**: Ter um subdomínio apontando para o IP da EC2 (ex: `api.radiante.emaster.info`).
-
-1. **Crie um registro DNS** no seu provedor de domínio:
-   - **Tipo**: A
-   - **Nome**: `api`
-   - **Valor**: `18.208.190.159` (IP público da EC2)
-   - **TTL**: 300 (ou o mínimo)
-
-2. **Conecte na EC2 via Session Manager** e execute:
+Se não estiver rodando:
 ```bash
 cd /opt/radiante
-sudo python3 dpbc.py --ssl
+sudo docker compose up -d
 ```
 
-3. O Caddy vai:
-   - Obter certificado SSL do Let's Encrypt para `api.radiante.emaster.info`
-   - Fazer proxy reverso para o backend na porta 8000
-   - Servir HTTPS automaticamente
-
-4. **No Amplify**, adicione a regra de rewrite:
-```json
-{
-  "source": "/api/<*>",
-  "target": "https://api.radiante.emaster.info/api/<*>",
-  "status": "200",
-  "condition": ""
-}
-```
-
-5. **Remova a variável `API_BASE`** do Amplify (ou deixe vazia) para que o `api.js` use URLs relativas ao mesmo domínio — o Amplify vai fazer o rewrite para o backend.
-
-### Verificação
-
-Após configurar HTTPS, teste:
+##### 4. Inicie o túnel ngrok (em background)
 
 ```bash
-# Do terminal local
-curl -I https://<DNS_DO_ALB>/api/status
-# Ou
-curl -I https://api.radiante.emaster.info/api/status
-# Deve retornar HTTP/2 200
+# Parar o frontend (nginx) para liberar recursos (opcional, mas recomendado)
+cd /opt/radiante
+sudo docker compose stop frontend
+
+# Iniciar ngrok em background
+nohup ngrok http 8000 --log=stdout > /opt/radiante/ngrok.log 2>&1 &
+
+# Aguardar 3 segundos para o ngrok iniciar
+sleep 3
 ```
 
-Depois, recarregue o frontend em `https://radiante.emaster.info/` e tente fazer upload. O erro Mixed Content deve desaparecer.
+##### 5. Descubra a URL pública gerada
+
+```bash
+# Consultar a URL ativa do túnel
+curl -s http://localhost:4040/api/tunnels | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for t in data['tunnels']:
+    if t['public_url'].startswith('https'):
+        print(t['public_url'])
+"
+```
+
+Você verá algo como:
+```
+https://abcd-18-208-190-159.ngrok-free.app
+```
+
+> 🔁 **Importante**: Essa URL muda toda vez que o ngrok reiniciar. Anote-a.
+
+##### 6. Teste se o túnel está funcionando
+
+```bash
+# Substitua pela URL que o ngrok gerou
+curl -s https://abcd-18-208-190-159.ngrok-free.app/api/status
+# Deve retornar o mesmo JSON do passo 3
+```
+
+##### 7. Configure o Amplify com a URL do ngrok
+
+No Console AWS → **Amplify** → **radiante-final** → **Environment variables**:
+
+| Variável | Valor |
+|----------|-------|
+| `API_BASE` | `https://abcd-18-208-190-159.ngrok-free.app` |
+
+> Substitua pela URL que o ngrok gerou no passo 5.
+
+Depois, faça um **novo deploy** da branch `main-poc` para aplicar a variável.
+
+##### 8. Teste no navegador
+
+Acesse `https://radiante.emaster.info/` e faça upload de um documento. O erro Mixed Content deve ter desaparecido.
+
+Verifique no console do navegador (F12 → Console):
+```
+API.uploadFile → https://abcd-18-208-190-159.ngrok-free.app/api/upload
+Resposta: 200 OK
+```
+
+#### Comandos úteis do ngrok
+
+```bash
+# Ver logs do ngrok
+tail -f /opt/radiante/ngrok.log
+
+# Ver status (se está rodando)
+ps aux | grep ngrok
+
+# Parar ngrok
+pkill ngrok
+
+# Reiniciar ngrok (gera nova URL!)
+pkill ngrok && sleep 2 && nohup ngrok http 8000 --log=stdout > /opt/radiante/ngrok.log 2>&1 &
+sleep 3 && curl -s http://localhost:4040/api/tunnels | python3 -c "import sys,json; d=json.load(sys.stdin); [print(t['public_url']) for t in d['tunnels'] if t['public_url'].startswith('https')]"
+```
+
+#### Limitações do ngrok free
+
+| Item | Limite | Impacto |
+|------|--------|---------|
+| Conexões/minuto | 40 | Se fizer 10x com 4 arquivos cada, pode estourar |
+| Túneis simultâneos | 1 | Só um backend por vez |
+| URL fixa? | Não | Muda ao reiniciar o processo |
+| Bandeira "ngrok free" | Aparece | Só na página web, não afeta a API |
+
+#### Script rápido (copiar e colar no SSM)
+
+```bash
+# Tudo em um comando — executa e mostra a URL
+curl -sSL -o /tmp/ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip && \
+sudo unzip -o /tmp/ngrok.zip -d /usr/local/bin/ && \
+sudo chmod +x /usr/local/bin/ngrok && \
+rm /tmp/ngrok.zip && \
+cd /opt/radiante && \
+sudo docker compose stop frontend 2>/dev/null && \
+pkill ngrok 2>/dev/null && \
+sleep 1 && \
+nohup ngrok http 8000 --log=stdout > /opt/radiante/ngrok.log 2>&1 && \
+sleep 3 && \
+echo "=== URL do tunel ===" && \
+curl -s http://localhost:4040/api/tunnels | python3 -c "import sys,json; d=json.load(sys.stdin); [print(t['public_url']) for t in d['tunnels'] if t['public_url'].startswith('https')]"
+```
 
 ---
 

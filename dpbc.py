@@ -391,8 +391,13 @@ def cmd_ssl() -> None:
     _ensure_ownership()
     print("  OK\n")
 
-    # 6. Iniciar containers com HTTPS
-    print("[6/6] Subindo containers com HTTPS...")
+    # 6. Substituir config do Nginx para HTTPS
+    print("[6/6] Ativando HTTPS no Nginx...")
+    SSL_CONF_SRC = f"{APP_DIR}/infra/nginx/nginx-ssl.conf"
+    NGINX_CONF_DST = f"{APP_DIR}/infra/nginx/nginx.conf"
+    if os.path.exists(SSL_CONF_SRC):
+        _run(["cp", SSL_CONF_SRC, NGINX_CONF_DST])
+        print("  Configuracao SSL copiada para nginx.conf")
     _run(["docker", "compose", "up", "--build", "-d"], capture=False)
     print("  OK\n")
 

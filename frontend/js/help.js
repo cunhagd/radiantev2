@@ -43,12 +43,32 @@ window.Help = {};
         continue;
       }
 
-      closeUl(); closeOl();
-
-      // Empty line
+      // Empty line — mantém listas abertas (não quebra a sequência)
       if (line.trim() === '') {
         continue;
       }
+
+      // --- Verificar se a linha é item de lista PRIMEIRO ---
+      var _olMatch = line.match(/^\d+\.\s+(.+)$/);
+      var _ulMatch = !_olMatch && line.match(/^[-*+]\s+(.+)$/);
+
+      if (_olMatch || _ulMatch) {
+        if (_olMatch) {
+          // Ordered list
+          if (inUl) { closeUl(); }
+          if (!inOl) { html += '<ol>\n'; inOl = true; }
+          html += '<li>' + parseInline(_olMatch[1]) + '</li>\n';
+        } else {
+          // Unordered list
+          if (inOl) { closeOl(); }
+          if (!inUl) { html += '<ul>\n'; inUl = true; }
+          html += '<li>' + parseInline(_ulMatch[1]) + '</li>\n';
+        }
+        continue;
+      }
+
+      // Não é item de lista — fecha listas pendentes
+      closeUl(); closeOl();
 
       // HR
       if (/^---+$/.test(line.trim())) {
@@ -120,23 +140,6 @@ window.Help = {};
           }
           html += '</tr>\n</tbody></table>\n';
         }
-        continue;
-      }
-
-      // Unordered list
-      var ulMatch = line.match(/^[-*+]\s+(.+)$/);
-      if (ulMatch) {
-        if (!inUl) { html += '<ul>\n'; inUl = true; }
-        // Check indentation for nested
-        html += '<li>' + parseInline(ulMatch[1]) + '</li>\n';
-        continue;
-      }
-
-      // Ordered list
-      var olMatch = line.match(/^\d+\.\s+(.+)$/);
-      if (olMatch) {
-        if (!inOl) { html += '<ol>\n'; inOl = true; }
-        html += '<li>' + parseInline(olMatch[1]) + '</li>\n';
         continue;
       }
 

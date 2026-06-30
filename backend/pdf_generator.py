@@ -1,415 +1,325 @@
-#!/usr/bin/env python3
-"""Geracao de PDF consolidado para o Radiante v2.
-
-Usa ReportLab para gerar PDF estilizado (Material Design 3)
-a partir de texto markdown com as analises juridicas.
-"""
-
 from __future__ import annotations
-
+import json
 import re
+from copy import deepcopy
+from datetime import datetime
+from io import BytesIO
 from pathlib import Path
-
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle,
+    BaseDocTemplate, PageTemplate, Frame, HRFlowable, PageBreak,
+    Paragraph, Spacer, Table, TableStyle,
 )
 
-# ── Paleta Material Design 3 ──────────────────────────────────────────────
-C_PRIMARY = colors.HexColor("#4285f4")
-C_SURFACE_1 = colors.HexColor("#f8f9fa")
-C_SURFACE_2 = colors.HexColor("#e8eaed")
-C_OUTLINE = colors.HexColor("#dadce0")
-C_TEXT = colors.HexColor("#1f1f1f")
-C_TEXT_MUTED = colors.HexColor("#5f6368")
-C_SUCCESS_BG = colors.HexColor("#e6f4ea")
-C_SUCCESS = colors.HexColor("#34a853")
-C_TABLE_HEADER = colors.HexColor("#e8f0fe")
-C_CODE_BG = colors.HexColor("#f1f5f9")
+MARGIN = 2 * 28.3465
+PAGE_W = A4[0] - 2 * MARGIN
 
-# Largura util do conteudo (A4 - margens)
-PAGE_W = A4[0] - 80
+# ── MD3 Color Palette ────────────────────────────────────────────────
+C_PRIMARY            = colors.HexColor("#6750A4")
+C_SECONDARY          = colors.HexColor("#625B71")
+C_TERTIARY           = colors.HexColor("#7D5260")
+C_SURFACE            = colors.HexColor("#FFFBFE")
+C_SURFACE_VARIANT    = colors.HexColor("#E7E0EC")
+C_OUTLINE            = colors.HexColor("#79747E")
+C_ERROR              = colors.HexColor("#B3261E")
+C_BACKGROUND         = colors.HexColor("#FFFBFE")
+C_ON_PRIMARY         = colors.HexColor("#FFFFFF")
+C_ON_SURFACE         = colors.HexColor("#1C1B1F")
+C_ON_SURFACE_VARIANT = colors.HexColor("#49454F")
 
+# ── 9 Paragraph Styles ───────────────────────────────────────────────
+def _st(name, font, size, leading, color, **kw):
+    return ParagraphStyle(name, fontName=font, fontSize=size, leading=leading,
+                          textColor=color, **kw)
 
-# ── Estilos de texto ─────────────────────────────────────────────────────
-TITLE_STYLE = ParagraphStyle(
-    "T", fontName="Helvetica-Bold", fontSize=16, leading=20,
-    textColor=C_PRIMARY, spaceAfter=16, spaceBefore=4,
-)
-H2_STYLE = ParagraphStyle(
-    "H2", fontName="Helvetica-Bold", fontSize=12, leading=15,
-    textColor=C_PRIMARY, spaceAfter=8, spaceBefore=0,
-)
-H3_STYLE = ParagraphStyle(
-    "H3", fontName="Helvetica-Bold", fontSize=10, leading=13,
-    textColor=C_TEXT, spaceAfter=6, spaceBefore=0,
-)
-BODY_STYLE = ParagraphStyle(
-    "B", fontName="Helvetica", fontSize=9, leading=13,
-    textColor=C_TEXT, spaceAfter=6, spaceBefore=0,
-)
-CALLOUT_STYLE = ParagraphStyle(
-    "C", fontName="Helvetica-Bold", fontSize=12, leading=15,
-    textColor=C_SUCCESS, spaceAfter=0, spaceBefore=0,
-    alignment=1,  # CENTER
-)
-CODE_STYLE = ParagraphStyle(
-    "CD", fontName="Courier", fontSize=7.5, leading=10,
-    textColor=C_TEXT, backColor=C_CODE_BG,
-    spaceAfter=4, spaceBefore=2,
-    leftIndent=6, rightIndent=6,
-)
+TITLE_STYLE = _st("T", "Helvetica-Bold", 16, 20, C_PRIMARY, spaceAfter=12, spaceBefore=4)
+H2_STYLE = _st("H2", "Helvetica-Bold", 14, 17, C_SECONDARY, spaceAfter=8, spaceBefore=10)
+H3_STYLE = _st("H3", "Helvetica-Bold", 12, 15, C_TERTIARY, spaceAfter=6, spaceBefore=6)
+BODY_STYLE = _st("B", "Helvetica", 11, 14, C_ON_SURFACE, spaceAfter=4, spaceBefore=0)
+CODE_STYLE = _st("CD", "Courier", 9, 12, C_ON_SURFACE, spaceAfter=4, spaceBefore=2, leftIndent=10, rightIndent=10)
+LIST_STYLE = _st("L", "Helvetica", 11, 14, C_ON_SURFACE, spaceAfter=4, spaceBefore=0, leftIndent=15)
+BLOCKQUOTE_STYLE = _st("BQ", "Helvetica", 10, 13, C_ON_SURFACE_VARIANT,
+                       spaceAfter=4, spaceBefore=2, leftIndent=20, rightIndent=10)
+COVER_TITLE_STYLE = _st("CT", "Helvetica-Bold", 24, 28, C_PRIMARY, spaceAfter=4, spaceBefore=0, alignment=TA_CENTER)
+COVER_SUBTITLE_STYLE = _st("CS", "Helvetica", 14, 17, C_SECONDARY, spaceAfter=4, spaceBefore=0, alignment=TA_CENTER)
+
+RE_H1 = re.compile(r"^# (.+)$")
+RE_H2 = re.compile(r"^## (.+)$")
+RE_H3 = re.compile(r"^### (.+)$")
+RE_LIST = re.compile(r"^[\*\-] +(.+)$")
 
 
-# ── Padroes de busca ─────────────────────────────────────────────────────
-RE_HEADING_H1 = re.compile(r"^# (.+)$")
-RE_HEADING_H2 = re.compile(r"^## (.+)$")
-RE_HEADING_H3 = re.compile(r"^### (.+)$")
-RE_CODE_FENCE = re.compile(r"^```")
-RE_TABLE_ROW = re.compile(r"^\|")
-RE_TABLE_SEPARATOR = re.compile(r"^\|[\s:]*[-]+[\s:|]*$")
-RE_ETAPA = re.compile(r"^## (Etapa \d+|Total de Repeticoes)")
+def _parse_inline(text: str) -> str:
+    """Converte markdown inline (*, **, `) para XML do ReportLab."""
+    if not text:
+        return text
+    # 1. Escape HTML (& primeiro para evitar duplo escape)
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # 2. Codigo inline: `codigo` → <font face="Courier">codigo</font>
+    text = re.sub(r"`(.+?)`", r'<font face="Courier">\1</font>', text)
+    # 3. Negrito: **texto** → <b>texto</b>
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    # 4. Italico: *texto* → <i>texto</i> (excluindo * que sao parte de **)
+    text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", text)
+    return text
 
 
-def _make_page_callback(total_pages: int):
-    """Retorna callback para cabecalho e rodape com total de paginas."""
-    def _draw(canvas, doc):
-        canvas.saveState()
-        # Cabecalho
-        canvas.setFont("Helvetica-Bold", 10)
-        canvas.setFillColor(C_TEXT)
-        canvas.drawString(40, A4[1] - 30, "Radiante — Análise Jurídica")
-        canvas.setStrokeColor(C_OUTLINE)
-        canvas.setLineWidth(0.5)
-        canvas.line(40, A4[1] - 36, A4[0] - 40, A4[1] - 36)
-        # Rodape
-        canvas.setFont("Helvetica", 8)
-        canvas.setFillColor(C_TEXT_MUTED)
-        canvas.drawCentredString(A4[0] / 2, 20, f"Página {doc.page} de {total_pages}")
-        canvas.restoreState()
-    return _draw
-
-
-def _make_etapa_block(title: str, body: list, is_odd: bool) -> list:
-    """Cria blocos de etapa com fundo colorido, quebrando entre paginas.
-
-    Em vez de uma unica Table aninhada (que nao quebra paginas), aplica
-    fundo colorido em cada elemento individualmente via backColor.
-    """
-    if not body:
-        return []
-    bg = C_SURFACE_2 if is_odd else C_SURFACE_1
-
-    result: list = []
-
-    # Titulo com fundo
-    result.append(Paragraph(title, ParagraphStyle(
-        "EtapaTitle",
-        fontName="Helvetica-Bold", fontSize=12, leading=15,
-        textColor=C_PRIMARY, spaceAfter=6, spaceBefore=4,
-        backColor=bg,
-    )))
-
-    for el in body:
-        if isinstance(el, Paragraph):
-            # Clona estilo com backColor
-            p_style = ParagraphStyle(
-                "EB",
-                fontName=el.style.fontName,
-                fontSize=el.style.fontSize,
-                leading=el.style.leading,
-                textColor=el.style.textColor,
-                spaceAfter=el.style.spaceAfter,
-                spaceBefore=el.style.spaceBefore,
-                leftIndent=el.style.leftIndent,
-                rightIndent=el.style.rightIndent,
-                backColor=bg,
-            )
-            result.append(Paragraph(el.text, p_style))
-        else:
-            result.append(el)
-
-    # Espacamento final
-    result.append(Spacer(1, 8))
-
-    return result
-
-
-def _make_callout(text: str) -> Table:
-    """Cria callout de destaque verde para o valor total."""
-    callout = Table([[Paragraph(text, CALLOUT_STYLE)]], colWidths=[PAGE_W])
-    callout.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), C_SUCCESS_BG),
-        ("BOX", (0, 0), (-1, -1), 1.5, C_SUCCESS),
-        ("TOPPADDING", (0, 0), (-1, -1), 12),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
-        ("LEFTPADDING", (0, 0), (-1, -1), 16),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 16),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+def _make_accents() -> list:
+    """Cria accent bar (Table 4pt x 18pt cor primary) + divider (HRFlowable)."""
+    out = []
+    accent = Table([[""]], colWidths=[4], rowHeights=[18])
+    accent.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), C_PRIMARY),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
-    return callout
+    out.append(accent)
+    out.append(Spacer(1, 2))
+    return out
 
 
-def _make_table(cells: list[str], is_header: bool) -> Table:
-    """Cria tabela estilizada com grade sutil."""
+def _make_table(cells: list[str]) -> Table:
+    """Tabela MD3: header primary, body alternado."""
     n = len(cells)
-    col_w = max(PAGE_W / n, 70) if n > 0 else PAGE_W
-    t = Table([cells], colWidths=[col_w] * n) if n > 0 else Table([cells])
-
-    style = [
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ("GRID", (0, 0), (-1, -1), 0.5, C_OUTLINE),
+    rows = [[c.strip() for c in cells]]
+    t = Table(rows, colWidths=[PAGE_W / n] * n)
+    cmds = [
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("BACKGROUND", (0, 0), (-1, 0), C_PRIMARY),
+        ("TEXTCOLOR", (0, 0), (-1, 0), C_ON_PRIMARY),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, C_OUTLINE),
+        ("BOX", (0, 0), (-1, -1), 0.5, C_OUTLINE),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]
-
-    if is_header:
-        style = [
-            ("BACKGROUND", (0, 0), (-1, -1), C_TABLE_HEADER),
-            ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
-            ("TEXTCOLOR", (0, 0), (-1, -1), C_PRIMARY),
-        ] + style
-
-    t.setStyle(TableStyle(style))
+    for i in range(1, len(rows)):
+        bg = C_SURFACE if i % 2 == 0 else C_SURFACE_VARIANT
+        cmds.append(("BACKGROUND", (0, i), (-1, i), bg))
+    t.setStyle(TableStyle(cmds))
     return t
 
 
+def _make_code_block(code_text: str) -> list:
+    """Bloco de codigo com fundo/borda (<=20 linhas) ou Paragraph simples (>20)."""
+    lines = code_text.count("<br/>") + 1
+    p = Paragraph(code_text, CODE_STYLE)
+    if lines > 20:
+        return [p]
+    ct = Table([[p]], colWidths=[PAGE_W - 10])
+    ct.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), C_SURFACE_VARIANT),
+        ("BOX", (0, 0), (-1, -1), 0.5, C_OUTLINE),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    return [ct]
+
+
+def _validate_pdf(path: Path) -> None:
+    if not path.exists():
+        raise RuntimeError(f"Falha: PDF {path} nao foi criado")
+    data = path.read_bytes()
+    if not data.startswith(b"%PDF-"):
+        raise RuntimeError(f"Falha: cabecalho %%PDF- ausente em {path}")
+    if not data.strip().endswith(b"%%EOF"):
+        raise RuntimeError(f"Falha: marcador %%EOF ausente em {path}")
+
+
+class _PdfDoc(BaseDocTemplate):
+    """DocTemplate MD3: cabecalho/rodape via afterPage()."""
+
+    def __init__(self, filename, total_pages=1, **kw):
+        self._total = total_pages
+        frame = Frame(MARGIN, MARGIN + 5, PAGE_W, A4[1] - 2 * MARGIN - 15,
+                      id="normal", leftPadding=0, rightPadding=0,
+                      topPadding=0, bottomPadding=0)
+        BaseDocTemplate.__init__(self, filename, pagesize=A4, **kw)
+        self.addPageTemplates([PageTemplate(id="main", frames=[frame])])
+
+    def afterPage(self):
+        c = self.canv
+        c.saveState()
+        c.setFont("Helvetica-Bold", 9)
+        c.setFillColor(C_PRIMARY)
+        c.drawString(MARGIN, A4[1] - 25, "Radiante - Analise Juridica")
+        c.setStrokeColor(C_OUTLINE)
+        c.setLineWidth(0.5)
+        c.line(MARGIN, A4[1] - 30, A4[0] - MARGIN, A4[1] - 30)
+        c.setFont("Helvetica", 8)
+        c.setFillColor(C_ON_SURFACE_VARIANT)
+        c.drawCentredString(A4[0] / 2, 15, f"Pagina {self.page} de {self._total}")
+        c.restoreState()
+
+
+def _build(elements, dest, total_pages=1):
+    doc = _PdfDoc(dest, total_pages=total_pages)
+    doc.build(elements)
+
+
+def _count_pages(elements) -> int:
+    class _C(BaseDocTemplate):
+        def afterPage(self):
+            self._n = getattr(self, "_n", 0) + 1
+    frame = Frame(MARGIN, MARGIN + 5, PAGE_W, A4[1] - 2 * MARGIN - 15,
+                  id="normal", leftPadding=0, rightPadding=0,
+                  topPadding=0, bottomPadding=0)
+    doc = _C(BytesIO(), pagesize=A4)
+    doc.addPageTemplates([PageTemplate(id="main", frames=[frame])])
+    doc._n = 0
+    doc.build(elements)
+    return max(doc._n, 1)
+
+
 def generate_pdf(etapas_dir: str | Path, output_path: str | Path) -> str:
-    """Gera PDF a partir de arquivos markdown em um diretorio de etapas.
-
-    Le todos os arquivos .md do diretorio, concatena em ordem alfabetica
-    e processa com o parser markdown existente (Material Design 3).
-
-    Args:
-        etapas_dir: Diretorio contendo arquivos .md das etapas.
-        output_path: Caminho de saida do PDF.
-
-    Returns:
-        Caminho absoluto do PDF gerado.
-    """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     etapas_path = Path(etapas_dir)
-
     if not etapas_path.exists():
-        raise FileNotFoundError(
-            f"Diretorio de etapas nao encontrado: {etapas_dir}"
-        )
+        raise FileNotFoundError(f"Diretorio de etapas nao encontrado: {etapas_dir}")
 
-    # Le todos os arquivos .md em ordem alfabetica
     md_files = sorted(etapas_path.glob("*.md"))
     if not md_files:
-        text = ""
-    else:
-        parts: list[str] = []
-        for fpath in md_files:
-            content = fpath.read_text(encoding="utf-8")
-            parts.append(content)
-        text = "\n\n".join(parts)
+        _build([Paragraph("Nenhum conteudo disponivel para o relatorio.", BODY_STYLE)],
+               str(output_path), total_pages=1)
+        _validate_pdf(output_path)
+        return str(output_path.resolve())
 
-    lines = text.split("\n")
-    elements: list = []
+    # ── Cover page ──────────────────────────────────────────────────
+    cover_elements: list = []
+    json_path = etapas_path.parent / "resultado_final.json"
+    if json_path.exists():
+        try:
+            meta = json.loads(json_path.read_text(encoding="utf-8"))
+            cover_elements.append(Spacer(1, A4[1] / 4))
+            cover_elements.append(Paragraph("Radiante", COVER_TITLE_STYLE))
+            cover_elements.append(Spacer(1, 6))
+            cover_elements.append(Paragraph("Analise Juridica", COVER_SUBTITLE_STYLE))
+            cover_elements.append(Spacer(1, 12))
+            cover_elements.append(HRFlowable(width="60%", thickness=0.5, color=C_OUTLINE,
+                                              spaceBefore=6, spaceAfter=16))
+            fields = [
+                ("Processo", meta.get("numero_processo", "N/A")),
+                ("Autor", meta.get("autor", "N/A")),
+                ("Reclamada", meta.get("reclamada", "N/A")),
+                ("Valor Total Estimado", f'R$ {meta.get("valor_total_estimado", "0,00")}'),
+                ("Data de Geracao", datetime.now().strftime("%d/%m/%Y")),
+            ]
+            for label, value in fields:
+                cover_elements.append(Paragraph(
+                    f'<b>{label}:</b>  {value}', BODY_STYLE))
+            cover_elements.append(PageBreak())
+        except (json.JSONDecodeError, KeyError):
+            pass
 
-    etapa_body: list = []
-    in_etapa = False
+    # ── Parser markdown → elements ─────────────────────────────────
+    all_flowables: list = []
     in_code = False
-    code_lines: list = []
-    etapa_idx = 0
-    callout_done = False
+    code_lines: list[str] = []
 
-    def flush_etapa():
-        nonlocal etapa_body, in_etapa, etapa_idx
-        if etapa_body:
-            block = _make_etapa_block(etapa_title, etapa_body, etapa_idx % 2 == 1)
-            elements.extend(block)
-            etapa_idx += 1
-        etapa_body = []
-        in_etapa = False
+    def flush_code():
+        nonlocal code_lines, in_code
+        if code_lines:
+            text = "\n".join(code_lines).replace("\n", "<br/>")
+            all_flowables.extend(_make_code_block(text))
+            all_flowables.append(Spacer(1, 4))
+            code_lines = []
+            in_code = False
 
-    etapa_title = ""
+    for fpath in md_files:
+        text = fpath.read_text(encoding="utf-8")
+        content_elements: list = []
 
-    for line in lines:
-        stripped = line.strip()
+        for raw_line in text.split("\n"):
+            s = raw_line.strip()
 
-        # ── Code block ───────────────────────────────────────────────
-        if RE_CODE_FENCE.match(stripped):
-            if in_code:
-                # Fecha code block
-                if in_etapa:
-                    etapa_body.append(Paragraph(
-                        "\n".join(code_lines).replace("\n", "<br/>"), CODE_STYLE
-                    ))
+            if s == "```":
+                if in_code:
+                    flush_code()
                 else:
-                    elements.append(Paragraph(
-                        "\n".join(code_lines).replace("\n", "<br/>"), CODE_STYLE
-                    ))
-                    elements.append(Spacer(1, 4))
-                code_lines = []
-                in_code = False
-            else:
-                if in_etapa:
-                    flush_etapa()
-                in_code = True
-            continue
+                    in_code = True
+                continue
+
+            if in_code:
+                code_lines.append(raw_line)
+                continue
+
+            # Blockquote (> ...)
+            if s.startswith(">"):
+                content = s.lstrip(">").strip()
+                if content:
+                    content_elements.append(Paragraph(
+                        _parse_inline(content), BLOCKQUOTE_STYLE))
+                continue
+
+            if not s:
+                content_elements.append(Spacer(1, 6))
+                continue
+
+            m = RE_H1.match(s)
+            if m:
+                content_elements.append(Paragraph(
+                    _parse_inline(m.group(1)), TITLE_STYLE))
+                continue
+
+            m = RE_H2.match(s)
+            if m:
+                content_elements.append(Paragraph(
+                    _parse_inline(m.group(1)), H2_STYLE))
+                continue
+
+            m = RE_H3.match(s)
+            if m:
+                content_elements.append(Paragraph(
+                    _parse_inline(m.group(1)), H3_STYLE))
+                continue
+
+            if s.startswith("|") and not s.lstrip("|").startswith("-"):
+                cells = [c.strip() for c in s.split("|") if c.strip()]
+                if cells:
+                    content_elements.append(_make_table(cells))
+                    content_elements.append(Spacer(1, 3))
+                continue
+
+            m = RE_LIST.match(s)
+            if m:
+                content_elements.append(Paragraph(
+                    f"\u2022 {_parse_inline(m.group(1))}", LIST_STYLE))
+                continue
+
+            content_elements.append(Paragraph(_parse_inline(s), BODY_STYLE))
 
         if in_code:
-            code_lines.append(stripped)
-            continue
+            flush_code()
 
-        # ── Linha em branco ──────────────────────────────────────────
-        if not stripped:
-            if in_etapa:
-                etapa_body.append(Spacer(1, 4))
-            else:
-                elements.append(Spacer(1, 6))
-            continue
+        # Wrap etapa with accent bar + divider
+        if content_elements:
+            if all_flowables:
+                all_flowables.append(HRFlowable(width="100%", thickness=0.5, color=C_OUTLINE,
+                                                 spaceBefore=6, spaceAfter=6))
+            all_flowables.extend(_make_accents())
+            all_flowables.extend(content_elements)
+            all_flowables.append(Spacer(1, 6))
 
-        # ── # Title (H1) ─────────────────────────────────────────────
-        m1 = RE_HEADING_H1.match(stripped)
-        if m1:
-            if in_etapa:
-                flush_etapa()
-            elements.append(Paragraph(m1.group(1), TITLE_STYLE))
-            continue
-
-        # ── ## Section (H2) ──────────────────────────────────────────
-        m2 = RE_HEADING_H2.match(stripped)
-        if m2:
-            title_text = m2.group(1)
-            if RE_ETAPA.match(stripped):
-                # Inicia bloco de etapa
-                if in_etapa:
-                    flush_etapa()
-                etapa_title = title_text
-                in_etapa = True
-            else:
-                # Header comum
-                if in_etapa:
-                    flush_etapa()
-                elements.append(Paragraph(title_text, H2_STYLE))
-            continue
-
-        # ── ### Subsection (H3) ──────────────────────────────────────
-        m3 = RE_HEADING_H3.match(stripped)
-        if m3:
-            if in_etapa:
-                etapa_body.append(Paragraph(m3.group(1), H3_STYLE))
-            else:
-                elements.append(Paragraph(m3.group(1), H3_STYLE))
-            continue
-
-        # ── Tabela markdown ──────────────────────────────────────────
-        if RE_TABLE_ROW.match(stripped) and not RE_TABLE_SEPARATOR.match(stripped):
-            cells = [c.strip() for c in stripped.split("|") if c.strip()]
-            if not cells:
-                continue
-
-            # Detecta cabecalho (linha com valores curtos sem cifrao)
-            has_currency = any("R$" in c for c in cells)
-            is_header = all(len(c) < 35 for c in cells) and not has_currency
-
-            # Detecta linha de total para callout
-            is_total = any("Total" in c for c in cells) and has_currency and not callout_done
-
-            if is_total:
-                if in_etapa:
-                    flush_etapa()
-                # Extrai o texto do total
-                total_text = " | ".join(cells)
-                elements.append(_make_callout(total_text))
-                callout_done = True
-                elements.append(Spacer(1, 8))
-                continue
-
-            tbl = _make_table(cells, is_header)
-            if in_etapa:
-                etapa_body.append(tbl)
-                etapa_body.append(Spacer(1, 3))
-            else:
-                elements.append(tbl)
-                elements.append(Spacer(1, 3))
-            continue
-
-        # ── Texto comum ──────────────────────────────────────────────
-        if in_etapa:
-            etapa_body.append(Paragraph(stripped, BODY_STYLE))
-        else:
-            elements.append(Paragraph(stripped, BODY_STYLE))
-
-    # Flush ultimo bloco
-    if in_etapa:
-        flush_etapa()
-
-    # T003: Fallback de conteudo vazio — garante >= 1 pagina mesmo sem elementos
-    if not elements:
-        elements.append(Paragraph(
-            "Nenhum conteúdo disponível para o relatório.",
-            BODY_STYLE,
-        ))
-
-    # ── Two-pass build (Página X de Y) ─────────────────────────────────
-    def _validate_pdf(path: Path) -> None:
-        """T001: Validacao pos-build — verifica estrutura minima do PDF."""
-        if not path.exists():
-            raise RuntimeError(
-                f"Falha na geracao do PDF: arquivo {path} nao foi criado"
-            )
-        data = path.read_bytes()
-        if not data.startswith(b"%PDF-"):
-            raise RuntimeError(
-                f"Falha na geracao do PDF: cabecalho %PDF- ausente em {path}"
-            )
-        if not data.strip().endswith(b"%%EOF"):
-            raise RuntimeError(
-                f"Falha na geracao do PDF: marcador %%EOF ausente em {path}"
-            )
-
-    # T002: Tratamento de erro no build — try/except com limpeza
-    _tmp_path = str(output_path.with_suffix(".tmp.pdf"))
+    # Assemble final elements: cover (if any) + content
+    final_elements = cover_elements + all_flowables
 
     try:
-        # Pass 1: build silencioso para contar paginas
-        _counter = [0]
-
-        def _count_pages(canvas, doc):
-            _counter[0] += 1
-
-        doc1 = SimpleDocTemplate(
-            _tmp_path, pagesize=A4,
-            leftMargin=40, rightMargin=40,
-            topMargin=50, bottomMargin=40,
-        )
-        doc1.build(elements, onFirstPage=_count_pages, onLaterPages=_count_pages)
-        total_pages = _counter[0]
-        Path(_tmp_path).unlink(missing_ok=True)
-
-        # Pass 2: build final com rodape contendo total de paginas
-        page_cb = _make_page_callback(total_pages)
-        doc2 = SimpleDocTemplate(
-            str(output_path), pagesize=A4,
-            leftMargin=40, rightMargin=40,
-            topMargin=50, bottomMargin=40,
-        )
-        doc2.build(elements, onFirstPage=page_cb, onLaterPages=page_cb)
-
-        # T001: Validacao pos-build
+        total = _count_pages(deepcopy(final_elements))
+        _build(deepcopy(final_elements), str(output_path), total_pages=total)
         _validate_pdf(output_path)
-
     except Exception:
-        # Remove PDF parcial se houver
-        Path(_tmp_path).unlink(missing_ok=True)
-        Path(output_path).unlink(missing_ok=True)
+        output_path.unlink(missing_ok=True)
         raise
 
     return str(output_path.resolve())

@@ -92,13 +92,9 @@ window.UI = {};
       try {
         const response = await API.uploadFile(file);
         if (response.ok) successCount++;
-        else {
-          var errText = 'HTTP ' + response.status;
-          try { var body = await response.text(); if (body) errText += ': ' + body.slice(0, 200); } catch (_) {}
-          DOM.uploadStatus.textContent = 'Erro ao enviar ' + file.name + ' (' + errText + ')';
-        }
+        else console.error('Erro ao enviar ' + file.name + ': status ' + response.status);
       } catch (err) {
-        DOM.uploadStatus.textContent = 'Erro de rede ao enviar ' + file.name + ': ' + err.message;
+        console.error('Erro de rede ao enviar ' + file.name + ':', err);
       }
     }
 

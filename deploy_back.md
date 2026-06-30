@@ -664,82 +664,56 @@ https://radiante.emaster.info          https://abc.ngrok-free.app      http://lo
 
 Vá no Console AWS → **Systems Manager** → **Session Manager** → **Start session** → Selecione `i-0df8ba5134b0e0b28`
 
-##### 2. Instale o ngrok (Amazon Linux 2023)
+##### 2. Execute o comando automatizado
 
-```bash
-# Verificar se é Amazon Linux 2023
-cat /etc/os-release | head -3
+No terminal do Session Manager, cole e execute:
 
-# Baixar ngrok
-curl -sSL -o /tmp/ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip
-
-# Descompactar e mover para /usr/local/bin
-sudo unzip -o /tmp/ngrok.zip -d /usr/local/bin/
-sudo chmod +x /usr/local/bin/ngrok
-
-# Limpar
-rm /tmp/ngrok.zip
-
-# Verificar instalacao
-ngrok version
-```
-
-##### 3. Verifique se o backend está rodando
-
-```bash
-curl -s http://localhost:8000/api/status
-# Deve retornar algo como {"status":"ok", "mode":"api", ...}
-```
-
-Se não estiver rodando:
 ```bash
 cd /opt/radiante
-sudo docker compose up -d
+sudo python3 dpbc.py --ngrok
 ```
 
-##### 4. Inicie o túnel ngrok (em background)
+O script vai fazer tudo automaticamente:
+1. Verificar/instalar o ngrok
+2. Verificar se o backend está rodando (se não, sobe os containers)
+3. Parar o container frontend (nginx) para liberar recursos
+4. Iniciar o túnel HTTPS em background
+5. Exibir a URL pública gerada
 
-```bash
-# Parar o frontend (nginx) para liberar recursos (opcional, mas recomendado)
-cd /opt/radiante
-sudo docker compose stop frontend
+Exemplo de saída:
+```
+=======================================================
+ dpbc.py — Configurando tunel HTTPS (ngrok)
+=======================================================
 
-# Iniciar ngrok em background
-nohup ngrok http 8000 --log=stdout > /opt/radiante/ngrok.log 2>&1 &
+[1/5] Verificando ngrok...
+  Baixando e instalando ngrok...
+  OK
 
-# Aguardar 3 segundos para o ngrok iniciar
-sleep 3
+[2/5] Verificando backend...
+  Backend respondendo (HTTP 200)
+
+[3/5] Parando container frontend...
+  OK
+
+[4/5] Iniciando tunel ngrok...
+  OK
+
+[5/5] Obtendo URL publica do tunel...
+
+=======================================================
+ TUNEL HTTPS ATIVO!
+ URL: https://abcd-18-208-190-159.ngrok-free.app
+=======================================================
+
+ Configure no Amplify:
+  Console AWS → Amplify → radiante-final → Environment variables
+  API_BASE = https://abcd-18-208-190-159.ngrok-free.app
+
+ Depois faca um novo deploy da branch main-poc.
 ```
 
-##### 5. Descubra a URL pública gerada
-
-```bash
-# Consultar a URL ativa do túnel
-curl -s http://localhost:4040/api/tunnels | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for t in data['tunnels']:
-    if t['public_url'].startswith('https'):
-        print(t['public_url'])
-"
-```
-
-Você verá algo como:
-```
-https://abcd-18-208-190-159.ngrok-free.app
-```
-
-> 🔁 **Importante**: Essa URL muda toda vez que o ngrok reiniciar. Anote-a.
-
-##### 6. Teste se o túnel está funcionando
-
-```bash
-# Substitua pela URL que o ngrok gerou
-curl -s https://abcd-18-208-190-159.ngrok-free.app/api/status
-# Deve retornar o mesmo JSON do passo 3
-```
-
-##### 7. Configure o Amplify com a URL do ngrok
+##### 3. Configure o Amplify com a URL do ngrok
 
 No Console AWS → **Amplify** → **radiante-final** → **Environment variables**:
 
@@ -747,11 +721,11 @@ No Console AWS → **Amplify** → **radiante-final** → **Environment variable
 |----------|-------|
 | `API_BASE` | `https://abcd-18-208-190-159.ngrok-free.app` |
 
-> Substitua pela URL que o ngrok gerou no passo 5.
+> Substitua pela URL que o script exibiu no passo anterior.
 
 Depois, faça um **novo deploy** da branch `main-poc` para aplicar a variável.
 
-##### 8. Teste no navegador
+##### 4. Teste no navegador
 
 Acesse `https://radiante.emaster.info/` e faça upload de um documento. O erro Mixed Content deve ter desaparecido.
 
@@ -761,7 +735,23 @@ API.uploadFile → https://abcd-18-208-190-159.ngrok-free.app/api/upload
 Resposta: 200 OK
 ```
 
-#### Comandos úteis do ngrok
+#### Comandos úteis
+
+```bash
+# Ver URL atual do tunel (sem precisar reler os logs)
+sudo python3 /opt/radiante/dpbc.py --ngrok-status
+
+# Ver logs do ngrok
+tail -f /opt/radiante/ngrok.log
+
+# Parar ngrok
+sudo pkill ngrok
+
+# Reiniciar ngrok (gera nova URL — precisa atualizar o Amplify!)
+sudo python3 /opt/radiante/dpbc.py --ngrok
+```
+
+#### Limitações do ngrok free
 
 ```bash
 # Ver logs do ngrok
@@ -790,19 +780,8 @@ sleep 3 && curl -s http://localhost:4040/api/tunnels | python3 -c "import sys,js
 #### Script rápido (copiar e colar no SSM)
 
 ```bash
-# Tudo em um comando — executa e mostra a URL
-curl -sSL -o /tmp/ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip && \
-sudo unzip -o /tmp/ngrok.zip -d /usr/local/bin/ && \
-sudo chmod +x /usr/local/bin/ngrok && \
-rm /tmp/ngrok.zip && \
-cd /opt/radiante && \
-sudo docker compose stop frontend 2>/dev/null && \
-pkill ngrok 2>/dev/null && \
-sleep 1 && \
-nohup ngrok http 8000 --log=stdout > /opt/radiante/ngrok.log 2>&1 && \
-sleep 3 && \
-echo "=== URL do tunel ===" && \
-curl -s http://localhost:4040/api/tunnels | python3 -c "import sys,json; d=json.load(sys.stdin); [print(t['public_url']) for t in d['tunnels'] if t['public_url'].startswith('https')]"
+# Tudo em um comando — instala ngrok, inicia tunel e mostra a URL
+cd /opt/radiante && sudo python3 dpbc.py --ngrok
 ```
 
 ---

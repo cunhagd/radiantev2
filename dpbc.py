@@ -42,6 +42,7 @@ ENV_FILE = f"{APP_DIR}/.env"
 BACKEND_SERVICE = "backend"
 SYSTEMD_SERVICE = "radiante-backend"
 REQUIREMENTS = f"{APP_DIR}/backend/requirements.txt"
+NGROK_LOG = f"{APP_DIR}/ngrok.log"
 
 
 def _run(cmd: list[str], capture: bool = True) -> subprocess.CompletedProcess:
@@ -437,6 +438,150 @@ http://{API_DOMAIN} {{
     print(f"{'=' * 55}")
 
 
+def cmd_ngrok() -> None:
+    """Instala e inicia tunel HTTPS via ngrok para o backend.
+
+    Cria um tunel HTTPS publico (ngrok-free.app) para
+    http://localhost:8000, resolvendo Mixed Content com o Amplify.
+
+    Uso:
+      sudo python3 /opt/radiante/dpbc.py --ngrok
+
+    Apos executar, cole a URL gerada no API_BASE do Amplify.
+    """
+    _require_root()
+
+    print(f"\n{'=' * 55}")
+    print(" dpbc.py — Configurando tunel HTTPS (ngrok)")
+    print(f"{'=' * 55}\n")
+
+    # ── 1. Verificar se ngrok ja esta instalado ────────────────────
+    print("[1/5] Verificando ngrok...")
+    r = _run(["which", "ngrok"])
+    if r.returncode != 0:
+        print("  Baixando e instalando ngrok...")
+        r = _run(["curl", "-sSL", "-o", "/tmp/ngrok.zip",
+                   "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip"])
+        if r.returncode != 0:
+            print("  ERRO: Falha ao baixar ngrok.", file=sys.stderr)
+            sys.exit(1)
+        r = _run(["unzip", "-o", "/tmp/ngrok.zip", "-d", "/usr/local/bin/"])
+        if r.returncode != 0:
+            print("  ERRO: Falha ao descompactar ngrok.", file=sys.stderr)
+            sys.exit(1)
+        _run(["chmod", "+x", "/usr/local/bin/ngrok"])
+        _run(["rm", "-f", "/tmp/ngrok.zip"])
+        print("  ngrok instalado.")
+    else:
+        print("  ngrok ja instalado.")
+    print("  OK\n")
+
+    # ── 2. Verificar se backend esta rodando ────────────────────────
+    print("[2/5] Verificando backend...")
+    r = _run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+              "http://localhost:8000/api/status"])
+    code = r.stdout.strip() if r.returncode == 0 else "000"
+    if code not in ("200", "202"):
+        print("  Backend nao responde na porta 8000. Subindo containers...")
+        os.chdir(APP_DIR)
+        _run(["docker", "compose", "up", "-d"], capture=False)
+        import time
+        for i in range(10):
+            time.sleep(3)
+            r = _run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                       "http://localhost:8000/api/status"])
+            code = r.stdout.strip() if r.returncode == 0 else "000"
+            if code in ("200", "202"):
+                break
+            print(f"  Tentativa {i+1}/10 (HTTP {code})...")
+        if code not in ("200", "202"):
+            print("  ERRO: Backend nao iniciou. Verifique os logs.", file=sys.stderr)
+            sys.exit(1)
+    print(f"  Backend respondendo (HTTP {code})\n")
+
+    # ── 3. Parar frontend (nginx) se estiver rodando ────────────────
+    print("[3/5] Parando container frontend...")
+    os.chdir(APP_DIR)
+    _run(["docker", "compose", "stop", "frontend"], capture=False)
+    print("  OK\n")
+
+    # ── 4. Parar ngrok antigo e iniciar novo ────────────────────────
+    print("[4/5] Iniciando tunel ngrok...")
+    _run(["pkill", "ngrok"], capture=False)
+    _run(["mkdir", "-p", os.path.dirname(NGROK_LOG)])
+    _run(["bash", "-c",
+          f"nohup ngrok http 8000 --log=stdout > {NGROK_LOG} 2>&1 &"],
+         capture=False)
+    import time
+    time.sleep(3)
+    print("  OK\n")
+
+    # ── 5. Obter e exibir URL publica ──────────────────────────────
+    print("[5/5] Obtendo URL publica do tunel...")
+    url = _get_ngrok_url()
+    if url:
+        print(f"\n{'=' * 55}")
+        print(" TUNEL HTTPS ATIVO!")
+        print(f" URL: {url}")
+        print(f"{'=' * 55}")
+        print()
+        print(" Configure no Amplify:")
+        print("  Console AWS → Amplify → radiante-final → Environment variables")
+        print(f"  API_BASE = {url}")
+        print()
+        print(" Depois faca um novo deploy da branch main-poc.")
+        print()
+        print(" Para ver esta URL novamente:")
+        print("  sudo python3 /opt/radiante/dpbc.py --ngrok-status")
+    else:
+        print("  AVISO: Nao foi possivel obter a URL.")
+        print(f"  Verifique os logs: tail -f {NGROK_LOG}")
+        print("  Ou consulte manualmente:")
+        print('''  curl -s http://localhost:4040/api/tunnels | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for t in d['tunnels']:
+    if t['public_url'].startswith('https'):
+        print(t['public_url'])
+"''')
+        print()
+
+    print(f"{'=' * 55}")
+    print(" ngrok configurado!")
+    print(f" Logs: tail -f {NGROK_LOG}")
+    print(f" Parar: sudo pkill ngrok")
+    print(f"{'=' * 55}")
+
+
+def cmd_ngrok_status() -> None:
+    """Exibe a URL publica atual do tunel ngrok."""
+    url = _get_ngrok_url()
+    if url:
+        print(f"\nURL do tunel ngrok: {url}")
+        print()
+        print("API_BASE para o Amplify:")
+        print(f"  {url}")
+    else:
+        print("ngrok nao esta rodando ou nao foi possivel obter a URL.")
+        print("Execute primeiro: sudo python3 /opt/radiante/dpbc.py --ngrok")
+
+
+def _get_ngrok_url() -> str | None:
+    """Consulta a API local do ngrok e retorna a URL https ativa."""
+    try:
+        import urllib.request
+        import json
+        req = urllib.request.urlopen("http://localhost:4040/api/tunnels", timeout=5)
+        data = json.loads(req.read().decode())
+        for tunnel in data.get("tunnels", []):
+            url = tunnel.get("public_url", "")
+            if url.startswith("https"):
+                return url
+        return None
+    except Exception:
+        return None
+
+
 def cmd_logs() -> None:
     """Exibe logs do backend em tempo real."""
     _require_root()
@@ -505,13 +650,18 @@ def main() -> None:
 
   --- LOGS EM TEMPO REAL ---
   sudo python3 dpbc.py --logs
+  --- HTTPS (ngrok) ---
+  sudo python3 dpbc.py --ngrok           # Instalar e iniciar tunel HTTPS
+  sudo python3 dpbc.py --ngrok-status     # Ver URL atual do tunel
 """,
     )
     parser.add_argument("--setup", action="store_true", help="Configurar ambiente completo do zero")
     parser.add_argument("--update", action="store_true", help="Atualizar backend com git pull + rebuild")
     parser.add_argument("--status", action="store_true", help="Exibir status dos servicos")
     parser.add_argument("--logs", action="store_true", help="Exibir logs em tempo real")
-    parser.add_argument("--ssl", action="store_true", help="Configurar HTTPS via Caddy (requer DNS)")
+    parser.add_argument("--ssl", action="store_true", help="(deprecated) Configurar HTTPS via Caddy")
+    parser.add_argument("--ngrok", action="store_true", help="Instalar e iniciar tunel HTTPS via ngrok")
+    parser.add_argument("--ngrok-status", action="store_true", help="Exibir URL atual do tunel ngrok")
     args = parser.parse_args()
 
     if args.setup:
@@ -524,6 +674,10 @@ def main() -> None:
         cmd_logs()
     elif args.ssl:
         cmd_ssl()
+    elif args.ngrok:
+        cmd_ngrok()
+    elif args.ngrok_status:
+        cmd_ngrok_status()
     else:
         parser.print_help()
 

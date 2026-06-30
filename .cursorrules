@@ -16,6 +16,7 @@ Quando o usuário utilizar os comandos formais, execute-os estritamente conforme
 - **/speckit.specify**: Documenta/altera requisitos em `.speckit/SPECIFICATIONS.md`.
 - **/speckit.plan**: Desenha a estratégia de arquivos e impactos em `.speckit/PLAN.md`.
 - **/speckit.tasks**: Quebra o plano em tarefas técnicas em `.speckit/TASKS.md`.
+- **/speckit.analyze**: Analse divergências em `.speckit/TASKS.md`.
 - **/speckit.implement**: Altera ou cria os códigos físicos na pasta do projeto.
 - **/speckit.converge**: Valida se o código gerado bate com a especificação atual.
 

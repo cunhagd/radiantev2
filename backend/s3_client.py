@@ -2,7 +2,7 @@
 """Cliente S3 para o Radiante v2.
 
 Gerencia upload, download, listagem e delecao de arquivos no bucket
-radiante-final, com fallback para modo local (data/) em caso de falha.
+radiante-final.
 
 As credenciais AWS sao passadas explicitamente via Config.
 """
@@ -134,9 +134,7 @@ def delete_files(config: Config, prefix: str) -> int:
 
 
 def get_s3_combined_context(config: Config) -> str:
-    """Le documentos do diretorio local data/docs/ e extrai texto.
-
-    Se o diretorio local estiver vazio, tenta fallback para S3.
+    """Le documentos do prefixo docs/ no S3 e extrai texto.
 
     Args:
         config: Configuracao do sistema.
@@ -147,30 +145,15 @@ def get_s3_combined_context(config: Config) -> str:
     from backend.extract import get_document_text, save_markdown
 
     combined_parts: list[str] = []
-    md_dir = config.md_dir
-    md_dir.mkdir(parents=True, exist_ok=True)
-
-    docs_dir = config.docs_dir
-
-    # Prioriza diretorio local
-    if docs_dir.exists() and any(docs_dir.iterdir()):
-        for fpath in sorted(docs_dir.iterdir()):
-            if fpath.is_file():
-                content = fpath.read_bytes()
-                text = get_document_text(config, fpath.name, content)
-                combined_parts.append(f"--- Documento: {fpath.name} ---\n{text}")
-                save_markdown(md_dir, fpath.name, text)
-    else:
-        # Fallback para S3
-        doc_keys = list_files(config, "docs/")
-        if doc_keys:
-            for key in sorted(doc_keys):
-                content = download_file(config, key)
-                if content is None:
-                    continue
-                filename = Path(key).name
-                text = get_document_text(config, filename, content)
-                combined_parts.append(f"--- Documento: {filename} ---\n{text}")
-                save_markdown(md_dir, filename, text)
+    doc_keys = list_files(config, "docs/")
+    if doc_keys:
+        for key in sorted(doc_keys):
+            content = download_file(config, key)
+            if content is None:
+                continue
+            filename = Path(key).name
+            text = get_document_text(config, filename, content)
+            combined_parts.append(f"--- Documento: {filename} ---\n{text}")
+            save_markdown(config, filename, text)
 
     return "\n\n".join(combined_parts)

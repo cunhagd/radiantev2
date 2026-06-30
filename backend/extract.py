@@ -172,15 +172,17 @@ def get_document_text(
         return file_bytes.decode("utf-8", errors="ignore")
 
 
-def save_markdown(md_dir: Path, filename: str, text: str) -> None:
-    """Salva texto extraido como markdown.
+def save_markdown(config: Config, filename: str, text: str) -> None:
+    """Salva texto extraido como markdown no S3.
 
     Args:
-        md_dir: Diretorio de saida.
+        config: Configuracao do sistema.
         filename: Nome original do arquivo.
         text: Texto extraido.
     """
+    from backend.s3_client import upload_file
+
     md_name = Path(filename).stem + "_extraido.md"
-    md_path = md_dir / md_name
-    md_path.write_text(text, encoding="utf-8")
-    print(f"   -> Markdown salvo: {md_path}")
+    s3_key = f"markdown_docs/{md_name}"
+    upload_file(config, text.encode("utf-8"), s3_key)
+    print(f"   -> Markdown salvo no S3: {s3_key}")

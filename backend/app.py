@@ -51,27 +51,7 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                         self._serve_json(cached)
                         return
 
-                # 2. Fallback: tenta arquivo local (consolidado_10x.json, depois resultado_final.json)
-                local_consolidado = ROOT_DIR / "data" / "consolidado_10x.json"
-                local_resultado = ROOT_DIR / "data" / "resultado_final.json"
-                parsed = None
-                if local_consolidado.exists():
-                    try:
-                        parsed = json.loads(local_consolidado.read_text(encoding="utf-8"))
-                    except (json.JSONDecodeError, OSError):
-                        pass
-                if not parsed and local_resultado.exists():
-                    try:
-                        parsed = json.loads(local_resultado.read_text(encoding="utf-8"))
-                    except (json.JSONDecodeError, OSError):
-                        pass
-                if parsed:
-                    with jobs_lock:
-                        ANALYSIS_JOBS["last_result"] = parsed
-                    self._serve_json(parsed)
-                    return
-
-                # 3. Fallback: tenta S3
+                # 2. Fallback: tenta S3
                 data = download_file(config, "results/consolidado_10x.json")
                 if not data:
                     data = download_file(config, "results/resultado_final.json")
@@ -94,12 +74,29 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                 history = get_execution_history()
                 self._serve_json({"status": "ok", "history": history, "total": len(history)})
             elif path.startswith("/data/"):
-                fpath = ROOT_DIR / path.lstrip("/")
-                if fpath.exists():
-                    mime = "application/pdf" if fpath.suffix == ".pdf" else "application/octet-stream"
-                    self._serve_file(fpath, mime)
+                filename = path.lstrip("/data/")
+                if not filename:
+                    self.send_error(400, "Nome de arquivo nao fornecido")
+                    return
+                data = download_file(config, f"results/{filename}")
+                if data is None:
+                    self.send_error(404, f"Arquivo nao encontrado: {filename}")
+                    return
+                # Validacao de integridade para PDF
+                if filename.lower().endswith(".pdf"):
+                    if not data.startswith(b"%PDF-"):
+                        self.send_response(502)
+                        self._serve_json({
+                            "status": "error",
+                            "message": "Arquivo PDF corrompido ou incompleto no servidor",
+                        })
+                        return
+                    self._serve_bytes(data, "application/pdf")
                 else:
-                    self.send_error(404)
+                    mime = "application/octet-stream"
+                    if filename.endswith(".json"):
+                        mime = "application/json; charset=utf-8"
+                    self._serve_bytes(data, mime)
             elif path.startswith("/css/") or path.startswith("/js/"):
                 # Arquivos estaticos modulares do frontend
                 fpath = ROOT_DIR / "frontend" / path.lstrip("/")
@@ -193,14 +190,14 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
         fn = self.headers.get("X-Filename", "")
         if cl and fn:
             data = self.rfile.read(cl)
-            # 1. Salva sempre localmente primeiro
-            docs_dir = ROOT_DIR / "data" / "docs"
-            docs_dir.mkdir(parents=True, exist_ok=True)
-            local_path = docs_dir / fn
-            local_path.write_bytes(data)
-
-            # 2. Tenta S3 como copia de seguranca (falha silenciosa se token expirou)
-            upload_file(config, data, f"docs/{fn}")
+            # Salva exclusivamente no S3, sem copia local
+            if not upload_file(config, data, f"docs/{fn}"):
+                self.send_response(503)
+                self._serve_json({
+                    "status": "error",
+                    "message": "Servico de armazenamento (S3) indisponivel. Tente novamente.",
+                })
+                return
 
             self._serve_json({"status": "ok", "filename": fn})
         else:
@@ -240,25 +237,7 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
 
-        # 1. Limpa diretorio local data/ (docs, markdown_docs, PDFs, JSONs, .md)
-        data_root = ROOT_DIR / "data"
-        send_step("local", "processing", "data/")
-        if data_root.exists():
-            try:
-                import shutil
-                for item in data_root.iterdir():
-                    if item.is_dir():
-                        shutil.rmtree(item)
-                    elif item.suffix in (".pdf", ".json", ".md"):
-                        item.unlink()
-                (data_root / "docs").mkdir(parents=True, exist_ok=True)
-                (data_root / "markdown_docs").mkdir(parents=True, exist_ok=True)
-                send_step("local", "done")
-            except (OSError, PermissionError) as e:
-                erros.append(f"Falha ao limpar diretorio local: {e}")
-                send_step("local", "error", file="data/", error=str(e))
-
-        # 2a. Limpa S3 docs/
+        # 1. Limpa S3 docs/
         send_step("s3_docs", "processing", "docs/")
         try:
             deleted = delete_files(config, "docs/")
@@ -268,7 +247,7 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
             erros.append(f"Falha ao limpar S3 docs: {e}")
             send_step("s3_docs", "error", file="docs/", error=str(e))
 
-        # 2b. Limpa S3 markdown_docs/
+        # 2. Limpa S3 markdown_docs/
         send_step("s3_markdown", "processing", "markdown_docs/")
         try:
             deleted = delete_files(config, "markdown_docs/")
@@ -278,7 +257,7 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
             erros.append(f"Falha ao limpar S3 markdown_docs: {e}")
             send_step("s3_markdown", "error", file="markdown_docs/", error=str(e))
 
-        # 2c. Limpa S3 results/
+        # 3. Limpa S3 results/
         send_step("s3_results", "processing", "results/")
         try:
             deleted = delete_files(config, "results/")
@@ -288,7 +267,7 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
             erros.append(f"Falha ao limpar S3 results: {e}")
             send_step("s3_results", "error", file="results/", error=str(e))
 
-        # 2d. Limpa S3 runs/
+        # 4. Limpa S3 runs/
         send_step("s3_runs", "processing", "runs/")
         try:
             deleted = delete_files(config, "runs/")
@@ -389,7 +368,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000,
                         help="Porta do servidor web (padrao: 8000)")
     parser.add_argument("--docs", type=str, default="",
-                        help="Diretorio com documentos para modo CLI")
+                        help="Ignorado - documentos lidos do S3 (prefixo docs/)")
     parser.add_argument("--step", type=int, choices=[1, 2, 3, 4], default=0,
                         help="Executar etapa especifica (modo CLI)")
     parser.add_argument("--once", action="store_true",
@@ -397,7 +376,7 @@ def main() -> None:
     parser.add_argument("--ten", action="store_true",
                         help="Executar analise 10x (modo CLI)")
     parser.add_argument("--output", type=str, default="",
-                        help="Diretorio para salvar resultados (modo CLI)")
+                        help="Ignorado - resultados salvos no S3 (results/)")
     args = parser.parse_args()
 
     config = load_config()
@@ -423,43 +402,28 @@ def _run_cli(args: argparse.Namespace) -> None:
     """
     from backend.pipeline import run_single_pipeline
 
-    # Determina diretorio de documentos
-    docs_dir = Path(args.docs) if args.docs else config.docs_dir
-    if not docs_dir.exists():
-        print(f"Diretorio de documentos nao encontrado: {docs_dir}")
-        sys.exit(1)
+    # Le documentos do S3 (prefixo docs/)
+    from backend.s3_client import get_s3_combined_context
+    combined_context = get_s3_combined_context(config)
 
-    print(f"\nDocumentos: {docs_dir}")
-
-    # Le documentos
-    combined_parts = []
-    from backend.extract import get_document_text
-    for fpath in sorted(docs_dir.iterdir()):
-        if fpath.is_file():
-            content = fpath.read_bytes()
-            text = get_document_text(config, fpath.name, content)
-            combined_parts.append(f"--- Documento: {fpath.name} ---\n{text}")
-            print(f"  Documento carregado: {fpath.name}")
-
-    combined_context = "\n\n".join(combined_parts)
     if not combined_context.strip():
-        print("Nenhum documento valido encontrado.")
+        print("Nenhum documento encontrado no S3 (prefixo docs/).")
         sys.exit(1)
 
-    print(f"\nContexto total: {len(combined_context)} chars")
+    print(f"\nContexto total: {len(combined_context)} chars (lido do S3)")
 
     # Execucao por etapa ou completa
     if args.step:
         _run_single_step(config, combined_context, args.step)
     elif args.once:
         result = run_once(config, combined_context)
-        _save_cli_result(result, args.output)
+        _save_cli_result(config, result, args.output)
     elif args.ten:
         result = run_ten_times(config, combined_context)
-        _save_cli_result(result, args.output)
+        _save_cli_result(config, result, args.output)
     else:
         print(f"\nOpcoes: --once (1x), --ten (10x), --step N (etapa)")
-        print(f"Exemplo: python backend/app.py --mode cli --once --docs data/docs")
+        print(f"Exemplo: python backend/app.py --mode cli --once")
 
 
 def _run_single_step(config: Config, context: str, step: int) -> None:
@@ -486,12 +450,13 @@ def _run_single_step(config: Config, context: str, step: int) -> None:
         print("Falha ao executar etapa.")
 
 
-def _save_cli_result(result: dict, output_dir: str) -> None:
-    """Salva resultado do CLI em arquivo.
+def _save_cli_result(config: Config, result: dict, output_dir: str) -> None:
+    """Salva resultado do CLI no S3.
 
     Args:
+        config: Configuracao do sistema.
         result: Resultado da execucao.
-        output_dir: Diretorio de saida.
+        output_dir: Diretorio de saida (opcional, mantido para compatibilidade).
     """
     import json
 
@@ -499,14 +464,10 @@ def _save_cli_result(result: dict, output_dir: str) -> None:
         print(f"\nERRO: {result.get('message', 'Falha desconhecida')}")
         return
 
-    output_path = Path(output_dir) if output_dir else ROOT_DIR / "data" / "results"
-    output_path.mkdir(parents=True, exist_ok=True)
+    json_data = json.dumps(result.get("data", {}), indent=2, ensure_ascii=False).encode("utf-8")
+    upload_file(config, json_data, "results/resultado.json")
 
-    json_path = output_path / "resultado.json"
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(result.get("data", {}), f, indent=2, ensure_ascii=False)
-
-    print(f"\nResultado salvo em: {json_path}")
+    print(f"\nResultado salvo no S3: results/resultado.json")
     print(f"Total cifras: {len(result.get('data', {}).get('cifras', []))}")
     print(f"Valor total: R$ {result.get('data', {}).get('valor_total_estimado', '0,00')}")
 

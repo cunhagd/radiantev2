@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
@@ -38,8 +38,6 @@ class Config:
     grok_price_output: float = 0.0
     grok_price_cache_read: float = 0.0
     grok_reasoning_effort: str = "high"
-    docs_dir: Path = field(default_factory=lambda: ROOT_DIR / "data" / "docs")
-    md_dir: Path = field(default_factory=lambda: ROOT_DIR / "data" / "markdown_docs")
 
 
 def _load_env() -> dict[str, str]:

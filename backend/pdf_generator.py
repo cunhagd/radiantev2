@@ -53,17 +53,66 @@ RE_LIST = re.compile(r"^[\*\-] +(.+)$")
 
 
 def _parse_inline(text: str) -> str:
-    """Converte markdown inline (*, **, `) para XML do ReportLab."""
+    """Converte markdown inline (*, **, `) para XML do ReportLab.
+
+    Processa em ordem: codigo inline (``), negrito (**), italico (*).
+    Usa substituicao por token para evitar aninhamento cruzado de tags
+    que o ReportLab nao suporta (ex: <b><i>...</b></i>).
+    """
     if not text:
         return text
-    # 1. Escape HTML (& primeiro para evitar duplo escape)
+    # 1. Escape HTML
     text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
     # 2. Codigo inline: `codigo` → <font face="Courier">codigo</font>
     text = re.sub(r"`(.+?)`", r'<font face="Courier">\1</font>', text)
-    # 3. Negrito: **texto** → <b>texto</b>
-    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
-    # 4. Italico: *texto* → <i>texto</i> (excluindo * que sao parte de **)
-    text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", text)
+
+    # 3. Converte negrito ** ** e italico * * em tokens para evitar
+    #    aninhamento cruzado de tags HTML/XML.
+    #    Estrategia: primeiro isola blocos *** (negrito + italico) que
+    #    sao convertidos para <b><i>...</i></b>, depois **, depois *.
+    _token_counter = [0]
+
+    def _token(val: str) -> str:
+        _token_counter[0] += 1
+        return f"\x00TOKEN{_token_counter[0]}\x00{val}\x00END{_token_counter[0]}\x00"
+
+    tokens: dict[str, str] = {}
+
+    def _store(m: re.Match) -> str:
+        t = _token(m.group(1))
+        # Escapa o conteudo do token para preservar marcadores internos
+        tokens[t] = m.group(1)
+        return t
+
+    def _restore(t: str) -> str:
+        """Recursivamente restaura tokens, aplicando tags."""
+        inner = tokens.get(t, "")
+        # O inner ja pode conter outros tokens
+        return inner
+
+    # 3a. ***texto*** → <b><i>texto</i></b>
+    def _bold_italic(m: re.Match) -> str:
+        inner = m.group(1)
+        return f"<b><i>{inner}</i></b>"
+
+    text = re.sub(r"\*\*\*(.+?)\*\*\*", _bold_italic, text)
+
+    # 3b. **texto** → <b>texto</b>
+    def _bold(m: re.Match) -> str:
+        inner = m.group(1)
+        # Se inner tem * solto, converte para italico
+        inner = re.sub(r"(?<!\*)\*(?!\*)([^*]+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", inner)
+        return f"<b>{inner}</b>"
+
+    text = re.sub(r"\*\*(.+?)\*\*", _bold, text)
+
+    # 3c. *texto* → <i>texto</i> (excluindo * que sao parte de **)
+    def _italic(m: re.Match) -> str:
+        return f"<i>{m.group(1)}</i>"
+
+    text = re.sub(r"(?<!\*)\*(?!\*)([^*]+?)(?<!\*)\*(?!\*)", _italic, text)
+
     return text
 
 
@@ -181,38 +230,53 @@ def _count_pages(elements) -> int:
     return max(doc._n, 1)
 
 
-def generate_pdf(etapas_dir: str | Path, output_path: str | Path) -> str:
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    etapas_path = Path(etapas_dir)
-    if not etapas_path.exists():
-        raise FileNotFoundError(f"Diretorio de etapas nao encontrado: {etapas_dir}")
+def generate_pdf(
+    etapas_data: dict[str, str],
+    resultado_json: dict | None = None,
+    output_path: str | Path = "",
+) -> bytes:
+    """Gera PDF consolidado a partir de dados das etapas em memoria.
 
-    md_files = sorted(etapas_path.glob("*.md"))
-    if not md_files:
+    Args:
+        etapas_data: Dict com nome da etapa como chave e conteudo markdown como valor.
+                     Ex: {"etapa1": "# Etapa 1...", "etapa2": "# Etapa 2...", ...}
+        resultado_json: Dict com JSON final (para capa) ou None.
+        output_path: Caminho opcional para salvar o PDF em disco. Se vazio,
+                     retorna apenas bytes.
+
+    Returns:
+        Bytes do PDF gerado.
+    """
+    dest = Path(output_path) if output_path else BytesIO()
+    if output_path:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    if not etapas_data:
         _build([Paragraph("Nenhum conteudo disponivel para o relatorio.", BODY_STYLE)],
-               str(output_path), total_pages=1)
-        _validate_pdf(output_path)
-        return str(output_path.resolve())
+               dest, total_pages=1)
+        if output_path:
+            _validate_pdf(Path(output_path))
+        return Path(output_path).read_bytes() if output_path else dest.getvalue()
+
+    # Ordena as etapas por chave (etapa1, etapa2, ...)
+    sorted_stages = sorted(etapas_data.items(), key=lambda x: x[0])
 
     # ── Cover page ──────────────────────────────────────────────────
     cover_elements: list = []
-    json_path = etapas_path.parent / "resultado_final.json"
-    if json_path.exists():
+    if resultado_json:
         try:
-            meta = json.loads(json_path.read_text(encoding="utf-8"))
             cover_elements.append(Spacer(1, A4[1] / 4))
             cover_elements.append(Paragraph("Radiante", COVER_TITLE_STYLE))
             cover_elements.append(Spacer(1, 6))
             cover_elements.append(Paragraph("Analise Juridica", COVER_SUBTITLE_STYLE))
             cover_elements.append(Spacer(1, 12))
             cover_elements.append(HRFlowable(width="60%", thickness=0.5, color=C_OUTLINE,
-                                              spaceBefore=6, spaceAfter=16))
+                                             spaceBefore=6, spaceAfter=16))
             fields = [
-                ("Processo", meta.get("numero_processo", "N/A")),
-                ("Autor", meta.get("autor", "N/A")),
-                ("Reclamada", meta.get("reclamada", "N/A")),
-                ("Valor Total Estimado", f'R$ {meta.get("valor_total_estimado", "0,00")}'),
+                ("Processo", resultado_json.get("numero_processo", "N/A")),
+                ("Autor", resultado_json.get("autor", "N/A")),
+                ("Reclamada", resultado_json.get("reclamada", "N/A")),
+                ("Valor Total Estimado", f'R$ {resultado_json.get("valor_total_estimado", "0,00")}'),
                 ("Data de Geracao", datetime.now().strftime("%d/%m/%Y")),
             ]
             for label, value in fields:
@@ -236,11 +300,10 @@ def generate_pdf(etapas_dir: str | Path, output_path: str | Path) -> str:
             code_lines = []
             in_code = False
 
-    for fpath in md_files:
-        text = fpath.read_text(encoding="utf-8")
+    for stage_name, stage_content in sorted_stages:
         content_elements: list = []
 
-        for raw_line in text.split("\n"):
+        for raw_line in stage_content.split("\n"):
             s = raw_line.strip()
 
             if s == "```":
@@ -306,7 +369,7 @@ def generate_pdf(etapas_dir: str | Path, output_path: str | Path) -> str:
         if content_elements:
             if all_flowables:
                 all_flowables.append(HRFlowable(width="100%", thickness=0.5, color=C_OUTLINE,
-                                                 spaceBefore=6, spaceAfter=6))
+                                                spaceBefore=6, spaceAfter=6))
             all_flowables.extend(_make_accents())
             all_flowables.extend(content_elements)
             all_flowables.append(Spacer(1, 6))
@@ -316,10 +379,18 @@ def generate_pdf(etapas_dir: str | Path, output_path: str | Path) -> str:
 
     try:
         total = _count_pages(deepcopy(final_elements))
-        _build(deepcopy(final_elements), str(output_path), total_pages=total)
-        _validate_pdf(output_path)
+        _build(deepcopy(final_elements), dest, total_pages=total)
     except Exception:
-        output_path.unlink(missing_ok=True)
+        if output_path:
+            Path(output_path).unlink(missing_ok=True)
         raise
 
-    return str(output_path.resolve())
+    # Validacao de integridade do PDF gerado
+    if output_path:
+        _validate_pdf(Path(output_path))
+        return Path(output_path).read_bytes()
+    else:
+        data = dest.getvalue()
+        if not data.startswith(b"%PDF-"):
+            raise RuntimeError("Falha ao gerar PDF: cabecalho %%PDF- ausente")
+        return data

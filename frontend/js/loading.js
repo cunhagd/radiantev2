@@ -60,12 +60,11 @@ window.Loading = {};
 
   function buildClearTimelineHTML() {
     var steps = [
-      { id: 1, label: 'Limpando dados locais' },
-      { id: 2, label: 'Limpando S3 (docs)' },
-      { id: 3, label: 'Limpando S3 (markdown_docs)' },
-      { id: 4, label: 'Limpando S3 (results)' },
-      { id: 5, label: 'Limpando S3 (runs)' },
-      { id: 6, label: 'Resetando estado do sistema' },
+      { id: 1, label: 'Limpando S3 (docs)' },
+      { id: 2, label: 'Limpando S3 (markdown_docs)' },
+      { id: 3, label: 'Limpando S3 (results)' },
+      { id: 4, label: 'Limpando S3 (runs)' },
+      { id: 5, label: 'Resetando estado do sistema' },
     ];
     var h = '';
     for (var i = 0; i < steps.length; i++) {
@@ -74,7 +73,7 @@ window.Loading = {};
       h += '<div class="m3-step" id="m3-step-' + n + '">';
       h += '  <div class="m3-step-visual">';
       h += '    <div class="m3-step-dot" id="m3-dot-' + n + '"></div>';
-      if (n < 6) h += '    <div class="m3-step-line" id="m3-line-' + n + '"></div>';
+      if (n < 5) h += '    <div class="m3-step-line" id="m3-line-' + n + '"></div>';
       h += '  </div>';
       h += '  <div class="m3-step-body">';
       h += '    <span class="m3-step-label">' + s.label + '</span>';
@@ -485,7 +484,7 @@ window.Loading = {};
     console.log('[CLEAR] Complete:', data.message);
 
     // Forca todos os steps como concluidos (exceto erros)
-    for (var s = 1; s <= 6; s++) {
+    for (var s = 1; s <= 5; s++) {
       var el = qs('m3-step-' + s);
       if (!el) continue;
       if (!el.classList.contains('is-error')) {
@@ -506,12 +505,11 @@ window.Loading = {};
   /* ------------------------------------------------------------------ */
   function clearStepMap(stepId) {
     var map = {
-      local: 1,
-      s3_docs: 2,
-      s3_markdown: 3,
-      s3_results: 4,
-      s3_runs: 5,
-      reset: 6,
+      s3_docs: 1,
+      s3_markdown: 2,
+      s3_results: 3,
+      s3_runs: 4,
+      reset: 5,
     };
     return map[stepId] || null;
   }

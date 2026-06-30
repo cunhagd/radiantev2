@@ -11,12 +11,11 @@ from __future__ import annotations
 import json
 import re
 import sys
-from pathlib import Path
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import backend.prompts as P
-from backend.config import Config, ROOT_DIR
+from backend.config import Config
 from backend.bedrock_client import run_llm_stage_streaming
 from backend.metrics import PipelineMetrics, merge_metrics, format_metrics_report
 from backend.progress import Progress
@@ -195,11 +194,7 @@ def run_single_pipeline(
         )
         if is_once:
             Progress.etapa1("completed", "Cabecalhos extraidos com sucesso!")
-        _save_etapa_md(ETAPAS_DIR, "etapa1", etapa1_raw)
 
-        # --- Etapa 2: Calculo de Cifras CLT ---
-        if run_idx is not None:
-            print(f"{prefix}Iniciando Etapa 2 (Calculo de Cifras)...")
         if is_once:
             Progress.etapa2("processing", "Calculando cifras trabalhistas...")
         etapa2_system = (
@@ -215,11 +210,7 @@ def run_single_pipeline(
         )
         if is_once:
             Progress.etapa2("completed", "Cifras calculadas com sucesso!")
-        _save_etapa_md(ETAPAS_DIR, "etapa2", etapa2_raw)
 
-        # --- Etapa 3: Probabilidade e Risco CPC 25 ---
-        if run_idx is not None:
-            print(f"{prefix}Iniciando Etapa 3 (Probabilidade e Risco)...")
         if is_once:
             Progress.etapa3(0, "processing", "Calculando probabilidade e risco...")
         etapa3_system = (
@@ -236,11 +227,7 @@ def run_single_pipeline(
         )
         if is_once:
             Progress.etapa3(0, "completed", "Probabilidade calculada com sucesso!")
-        _save_etapa_md(ETAPAS_DIR, "etapa3", etapa3_raw)
 
-        # --- Etapa 4: Consolidacao Final (JSON) ---
-        if run_idx is not None:
-            print(f"{prefix}Iniciando Etapa 4 (Consolidacao Final)...")
         if is_once:
             Progress.etapa4("processing", "Consolidando resultados finais...")
         etapa4_system = (
@@ -269,7 +256,6 @@ def run_single_pipeline(
 
         if is_once:
             Progress.etapa4("completed", "Consolidacao finalizada com sucesso!")
-        _save_etapa_md(ETAPAS_DIR, "etapa4", etapa4_raw)
 
         # Agrega metricas da rodada
         all_metrics = [etapa1_metrics, etapa2_metrics, etapa3_metrics, etapa4_metrics]
@@ -327,97 +313,12 @@ def save_stage_files(
     if "pdf_filename" not in json_obj:
         json_obj["pdf_filename"] = "relatorio_consolidado.pdf"
 
-    # Salva JSON final (local + S3)
-    json_data = json.dumps(json_obj, indent=2, ensure_ascii=False,)
-    local_json_path = ROOT_DIR / "data" / "resultado_final.json"
-    local_json_path.parent.mkdir(parents=True, exist_ok=True)
-    local_json_path.write_text(json_data, encoding="utf-8")
+    # Salva JSON final apenas no S3
+    json_data = json.dumps(json_obj, indent=2, ensure_ascii=False)
     upload_file(
         config, json_data.encode("utf-8"),
         f"{s3_prefix}/resultado_final.json",
     )
-
-
-def clean_artefatos_anteriores(mode: str) -> None:
-    """Remove artefatos (PDFs e JSONs) do modo oposto antes de gerar novos.
-
-    Args:
-        mode: 'once' ou 'ten' — modo que sera executado.
-    """
-    pdfs_to_remove = (
-        ["relatorio_consolidado_10x.pdf"]
-        if mode == "once"
-        else ["relatorio_consolidado.pdf"]
-    )
-    jsons_to_remove = (
-        ["consolidado_10x.json"]
-        if mode == "once"
-        else ["resultado_final.json"]
-    )
-    for fname in pdfs_to_remove + jsons_to_remove:
-        fpath = ROOT_DIR / "data" / fname
-        if fpath.exists():
-            fpath.unlink()
-
-
-# ── Constantes ─────────────────────────────────────────────────────────────
-ETAPAS_DIR = ROOT_DIR / "data" / "etapas"
-
-# Nomes padronizados das etapas para titulo do arquivo .md
-_ETAPA_TITLES = {
-    "etapa1": "Etapa 1 — Extração de Metadados",
-    "etapa2": "Etapa 2 — Cálculo de Cifras",
-    "etapa3": "Etapa 3 — Probabilidade e Risco",
-    "etapa4": "Etapa 4 — Consolidação Final",
-}
-
-
-def _save_etapa_md(
-    etapas_dir: Path,
-    stage_name: str,
-    content: str,
-    run_idx: int | None = None,
-) -> None:
-    """Salva o resultado de uma etapa como arquivo markdown em data/etapas/.
-
-    Args:
-        etapas_dir: Diretorio onde salvar os arquivos .md.
-        stage_name: Nome da etapa (ex: 'etapa1', 'etapa3').
-        content: Conteudo markdown da etapa.
-        run_idx: Indice da rodada (apenas etapa 3 no modo 10x).
-    """
-    etapas_dir.mkdir(parents=True, exist_ok=True)
-
-    # Define nome do arquivo
-    if run_idx is not None and stage_name == "etapa3":
-        filename = f"etapa3_rodada{run_idx}.md"
-    else:
-        filename = f"{stage_name}.md"
-
-    # Define titulo do cabecalho
-    title = _ETAPA_TITLES.get(stage_name, stage_name.upper())
-
-    # Fallback para conteudo vazio
-    if not content or not content.strip():
-        content = "Nenhum conteúdo disponível para esta etapa."
-
-    file_content = f"# {title}\n\n{content}\n"
-    filepath = etapas_dir / filename
-    filepath.write_text(file_content, encoding="utf-8")
-
-
-def clean_etapas_dir(etapas_dir: Path) -> None:
-    """Limpa o diretorio data/etapas/, criando-o se necessario.
-
-    Remove todos os arquivos .md do diretorio antes de uma nova analise.
-
-    Args:
-        etapas_dir: Diretorio de etapas a ser limpo.
-    """
-    etapas_dir.mkdir(parents=True, exist_ok=True)
-    for f in etapas_dir.iterdir():
-        if f.suffix.lower() == ".md":
-            f.unlink()
 
 
 def run_once(config: Config, combined_context: str) -> dict:
@@ -432,33 +333,27 @@ def run_once(config: Config, combined_context: str) -> dict:
     """
     from backend.pdf_generator import generate_pdf
 
-    # Limpa diretorio de etapas antes de comecar
-    clean_etapas_dir(ETAPAS_DIR)
-
     result = run_single_pipeline(config, combined_context, stream_to_console=True)
     if result is None:
-        # Edge case: pipeline falhou — salva erro nos .md
-        _save_etapa_md(ETAPAS_DIR, "etapa1", "**ERRO**: O pipeline falhou durante a execucao.")
         return {"status": "error", "message": "Pipeline falhou"}
 
     # Remove artefatos do modo oposto (10x) antes de gerar novos
-    clean_artefatos_anteriores("once")
     delete_files(config, "results/relatorio_consolidado_10x.pdf")
     delete_files(config, "results/consolidado_10x.json")
 
     # Salva resultados no S3
     save_stage_files(config, "results", combined_context, result)
 
-    # Gera PDF do relatorio a partir dos arquivos .md
-    pdf_path = ROOT_DIR / "data" / "relatorio_consolidado.pdf"
-    generate_pdf(ETAPAS_DIR, pdf_path)
-
-    # Upload PDF para S3
-    if pdf_path.exists():
-        upload_file(
-            config, pdf_path.read_bytes(),
-            "results/relatorio_consolidado.pdf",
-        )
+    # Gera PDF em memoria a partir dos dados das etapas e faz upload direto para S3
+    etapas_data = {
+        "etapa1": result.get("etapa1_raw", ""),
+        "etapa2": result.get("etapa2_raw", ""),
+        "etapa3": result.get("etapa3_raw", ""),
+        "etapa4": result.get("etapa4_raw", ""),
+    }
+    json_obj = result.get("parsed_json", {})
+    pdf_bytes = generate_pdf(etapas_data=etapas_data, resultado_json=json_obj)
+    upload_file(config, pdf_bytes, "results/relatorio_consolidado.pdf")
 
     metrics = result.get("metrics", PipelineMetrics())
     print(f"\n{'=' * 40}")
@@ -497,9 +392,6 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
     """
     from backend.pdf_generator import generate_pdf
 
-    # Limpa diretorio de etapas antes de comecar
-    clean_etapas_dir(ETAPAS_DIR)
-
     print("\n[10x] Modo otimizado: Etapas 1 e 2 unicas, Etapa 3 em 10x...")
     print()
 
@@ -521,11 +413,9 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
     except Exception as e:
         print(f"ERROR: Etapa 1 falhou: {e}")
         Progress.etapa1("error", f"Falhou: {e}")
-        _save_etapa_md(ETAPAS_DIR, "etapa1", f"**ERRO**: {e}")
         record_execution(mode="ten", status="error", metrics=None, error=str(e))
         return {"status": "error", "message": f"Etapa 1 falhou: {e}"}
     Progress.etapa1("completed", "Cabecalhos extraidos com sucesso!")
-    _save_etapa_md(ETAPAS_DIR, "etapa1", etapa1_raw)
     print()
 
     # ======================================================================
@@ -546,11 +436,9 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
     except Exception as e:
         print(f"ERROR: Etapa 2 falhou: {e}")
         Progress.etapa2("error", f"Falhou: {e}")
-        _save_etapa_md(ETAPAS_DIR, "etapa2", f"**ERRO**: {e}")
         record_execution(mode="ten", status="error", metrics=None, error=str(e))
         return {"status": "error", "message": f"Etapa 2 falhou: {e}"}
     Progress.etapa2("completed", "Cifras calculadas com sucesso!")
-    _save_etapa_md(ETAPAS_DIR, "etapa2", etapa2_raw)
     print()
 
     # ======================================================================
@@ -610,10 +498,6 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
     print(f"\n  -> {len(valid_etapa3)}/10 repeticoes da Etapa 3 concluidas com sucesso.")
     print()
 
-    # Salva cada rodada da etapa 3 como arquivo .md individual
-    for i, (raw_i, _) in enumerate(valid_etapa3, 1):
-        _save_etapa_md(ETAPAS_DIR, "etapa3", raw_i, run_idx=i)
-
     # ======================================================================
     # ETAPA 4 (unica): Consolidacao Final (JSON)
     # ======================================================================
@@ -653,7 +537,6 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
 
     print("\nEtapa 4 concluida com sucesso.")
     Progress.etapa4("completed", "Consolidacao finalizada!")
-    _save_etapa_md(ETAPAS_DIR, "etapa4", etapa4_raw)
 
     # ======================================================================
     # Salva resultados no S3
@@ -679,7 +562,7 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
             f"results/etapa3_repeticao_{i}.md",
         )
 
-    # Gera relatorio de auditoria (local + S3)
+    # Gera relatorio de auditoria apenas no S3
     audit_lines = ["# Auditoria de 10 Rodadas (Modo Otimizado)\n"]
     audit_lines.append(f"## Etapas 1 e 2 (unicas)\n")
     audit_lines.append(f"- Etapa 1: {etapa1_metrics.prompt_tokens if etapa1_metrics else 0} tokens\n")
@@ -691,36 +574,29 @@ def run_ten_times(config: Config, combined_context: str) -> dict:
     audit_lines.append(f"\n## Consolidacao\n")
     audit_lines.append(f"```json\n{json.dumps(parsed_json, indent=2, ensure_ascii=False)}\n```\n")
     audit_text = "\n".join(audit_lines)
-    # Salva localmente
-    audit_local_path = ROOT_DIR / "data" / "auditoria_10x.md"
-    audit_local_path.parent.mkdir(parents=True, exist_ok=True)
-    audit_local_path.write_text(audit_text, encoding="utf-8")
-    # Upload para S3 (fallback)
     upload_file(config, audit_text.encode("utf-8"), "results/auditoria_10x.md")
 
     # Remove artefatos do modo oposto (1x) antes de gerar novos
-    clean_artefatos_anteriores("ten")
     delete_files(config, "results/relatorio_consolidado.pdf")
     delete_files(config, "results/resultado_final.json")
 
-    # Salva JSON consolidado (local + S3)
+    # Salva JSON consolidado apenas no S3
     json_obj = parsed_json.copy()
     json_obj["pdf_filename"] = "relatorio_consolidado_10x.pdf"
     json_consolidado = json.dumps(json_obj, indent=2, ensure_ascii=False).encode("utf-8")
-    json_local_path = ROOT_DIR / "data" / "consolidado_10x.json"
-    json_local_path.parent.mkdir(parents=True, exist_ok=True)
-    json_local_path.write_text(json_consolidado.decode("utf-8"), encoding="utf-8")
     upload_file(config, json_consolidado, "results/consolidado_10x.json")
 
-    # Gera PDF consolidado a partir dos arquivos .md das etapas
-    pdf_path = ROOT_DIR / "data" / "relatorio_consolidado_10x.pdf"
-    generate_pdf(ETAPAS_DIR, pdf_path)
-
-    if pdf_path.exists():
-        upload_file(
-            config, pdf_path.read_bytes(),
-            "results/relatorio_consolidado_10x.pdf",
-        )
+    # Gera PDF em memoria e faz upload direto para S3
+    etapas_data = {
+        "etapa1": etapa1_raw,
+        "etapa2": etapa2_raw,
+        "etapa4": etapa4_raw,
+    }
+    # Inclui as repeticoes da etapa 3
+    for i, (raw_i, _) in enumerate(valid_etapa3, 1):
+        etapas_data[f"etapa3_repeticao_{i}"] = raw_i
+    pdf_bytes = generate_pdf(etapas_data=etapas_data, resultado_json=json_obj)
+    upload_file(config, pdf_bytes, "results/relatorio_consolidado_10x.pdf")
 
     # Agrega metricas totais
     all_metrics_list = [etapa1_metrics, etapa2_metrics, etapa4_metrics]

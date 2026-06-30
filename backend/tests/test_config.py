@@ -60,10 +60,6 @@ class TestConfigLoading:
         assert (ROOT_DIR / "backend").exists()
         assert (ROOT_DIR / "frontend").exists()
 
-    def test_docs_dir_default(self, test_config):
-        """docs_dir deve apontar para data/docs."""
-        assert str(test_config.docs_dir).endswith("data\\docs") or str(test_config.docs_dir).endswith("data/docs")
-
     def test_model_id_default(self, test_config):
         """model_id deve ser xai.grok-4.3."""
         assert test_config.model_id == "xai.grok-4.3"
@@ -91,5 +87,3 @@ class TestConfigLoading:
         assert hasattr(test_config, "grok_price_output")
         assert hasattr(test_config, "grok_price_cache_read")
         assert hasattr(test_config, "grok_reasoning_effort")
-        assert hasattr(test_config, "docs_dir")
-        assert hasattr(test_config, "md_dir")

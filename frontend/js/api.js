@@ -7,9 +7,11 @@
 window.API = {};
 
 (function () {
-  const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? "http://localhost:8000"
-    : "https://jtuuxek832.execute-api.us-east-1.amazonaws.com";
+  const API_BASE = window.API_BASE || (
+    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? "http://localhost:8000"
+      : "https://jtuuxek832.execute-api.us-east-1.amazonaws.com"
+  );
 
   API.BASE = API_BASE;
 

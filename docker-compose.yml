@@ -1,5 +1,5 @@
 # docker-compose.yml
-# Desenvolvimento local: backend + frontend (nginx)
+# Producao: backend + frontend (nginx com HTTPS) na EC2
 # Synthesized: 2026-06-28
 #
 # Uso:
@@ -11,6 +11,9 @@
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
 #   AWS_BEARER_TOKEN_BEDROCK, BEDROCK_MODEL_ID
 #   BUCKET_NAME (opcional, default: radiante-final)
+#
+# Certificados SSL (gerados pelo Certbot no host):
+#   ./certs/radiante.emaster.info/  mapeado para /etc/letsencrypt/
 
 services:
   # Backend Python (servidor HTTP nativo)
@@ -41,7 +44,7 @@ services:
       retries: 3
       start_period: 15s
 
-  # Frontend (nginx: estatico + proxy reverso)
+  # Frontend (nginx: estatico + proxy reverso + HTTPS)
   frontend:
     build:
       context: .
@@ -50,6 +53,12 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      # Certificados SSL gerados pelo Certbot no host
+      - ./certs:/etc/letsencrypt:ro
+      # Webroot para renovacao do Certbot
+      - ./certs-webroot:/var/www/certbot
     depends_on:
       backend:
         condition: service_healthy

@@ -129,7 +129,7 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
             self.send_error(500, str(e))
 
     def do_OPTIONS(self) -> None:
-        """Responde preflight CORS para requests cross-origin (Amplify/ALB)."""
+        """Responde preflight CORS para requests cross-origin."""
         self.send_response(200)
         self._add_cors()
         self.end_headers()

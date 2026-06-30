@@ -10,7 +10,7 @@ window.API = {};
   var API_BASE = window.API_BASE || '';
 
   // Se API_BASE for URL relativa ou vazia, endpoints sao resolvidos
-  // contra o mesmo dominio (necessita de proxy reverso no Amplify ou nginx)
+  // contra o mesmo dominio (necessita de proxy reverso no nginx)
   if (!API_BASE) {
     var isLocal = window.location.hostname === 'localhost' ||
                   window.location.hostname === '127.0.0.1';

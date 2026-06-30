@@ -16,6 +16,9 @@ Uso (via Session Manager no navegavel):
   wget -q https://raw.githubusercontent.com/cunhagd/radiantev2/main/dpbc.py
   sudo python3 dpbc.py --setup
 
+  # Configurar HTTPS (apos DNS apontar para a EC2)
+  sudo python3 dpbc.py --ssl
+
   # Atualizar backend com alteracoes do GitHub
   cd /opt/radiante
   sudo python3 dpbc.py --update
@@ -33,6 +36,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 
 
 APP_DIR = "/opt/radiante"
@@ -173,19 +177,19 @@ def cmd_setup() -> None:
 
     # ── 8. Health check ───────────────────────────────────────────
     print("[8/9] Aguardando health check (ate 30s)...")
-    import time
     for i in range(15):
         time.sleep(2)
+        # Verifica via Nginx (porta 80) para testar o proxy chain completo
         r = _run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                   "http://localhost:8000/api/status"])
+                   "http://localhost/api/status"])
         code = r.stdout.strip() if r.returncode == 0 else "000"
         if code in ("200", "202"):
-            print(f"  -> Backend respondendo na porta 8000 (HTTP {code})")
+            print(f"  -> Sistema respondendo via Nginx (HTTP {code})")
             break
         print(f"  Tentativa {i+1}/15 (HTTP {code})...")
     else:
         print("  AVISO: Health check nao confirmado.")
-        print("  Verifique: curl http://localhost:8000/api/status")
+        print("  Verifique: curl http://localhost/api/status")
     print()
 
     # ── 9. Systemd ────────────────────────────────────────────────
@@ -195,9 +199,11 @@ def cmd_setup() -> None:
 
     print(f"{'=' * 55}")
     print(" Setup concluido!")
-    print(f" Backend: http://localhost:8000")
-    print(f" Logs:    sudo docker compose -f {COMPOSE_FILE} logs -f")
-    print(f" Parar:   sudo docker compose -f {COMPOSE_FILE} down")
+    print(f" Frontend: http://localhost")
+    print(f" Backend:  http://localhost:8000")
+    print(f" Logs:     sudo docker compose -f {COMPOSE_FILE} logs -f")
+    print(f" Parar:    sudo docker compose -f {COMPOSE_FILE} down")
+    print(f" HTTPS:    sudo python3 {APP_DIR}/dpbc.py --ssl (apos DNS apontar)")
     print(f" Atualizar: sudo python3 {APP_DIR}/dpbc.py --update")
     print(f"{'=' * 55}")
 
@@ -241,14 +247,13 @@ def cmd_update() -> None:
 
     # ── 4. Health check ────────────────────────────────────────────
     print("[4/4] Verificando health check...")
-    import time
     for i in range(10):
         time.sleep(2)
         r = _run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                   "http://localhost:8000/api/status"])
+                   "http://localhost/api/status"])
         code = r.stdout.strip() if r.returncode == 0 else "000"
         if code in ("200", "202"):
-            print(f"  -> Backend respondendo (HTTP {code})")
+            print(f"  -> Sistema respondendo (HTTP {code})")
             break
         print(f"  Tentativa {i+1}/10 (HTTP {code})...")
     else:
@@ -281,12 +286,21 @@ def cmd_status() -> None:
     else:
         print("Containers: Nenhum rodando\n")
 
-    # Health check
-    r = _run(["curl", "-s", "http://localhost:8000/api/status"])
+    # Health check via Nginx
+    r = _run(["curl", "-s", "http://localhost/api/status"])
     if r.returncode == 0 and r.stdout:
-        print(f"Health Check (/api/status): Online")
+        print(f"Health Check (localhost/api/status): Online")
     else:
-        print("Health Check: Offline (porta 8000 nao respondendo)")
+        print("Health Check: Offline (Nginx nao respondendo)")
+
+    # HTTPS check
+    r = _run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+               "https://localhost/api/status", "--insecure"])
+    code = r.stdout.strip() if r.returncode == 0 else "000"
+    if code in ("200", "202"):
+        print(f"HTTPS (localhost): Online (HTTP {code})")
+    else:
+        print(f"HTTPS: Offline (HTTP {code}). Execute --ssl para configurar.")
 
     # Systemd
     r = _run(["systemctl", "is-active", SYSTEMD_SERVICE])
@@ -322,6 +336,82 @@ def cmd_logs() -> None:
     if r.returncode != 0:
         print("  ERRO: docker compose logs falhou.", file=sys.stderr)
         sys.exit(1)
+
+
+def cmd_ssl() -> None:
+    """Configura HTTPS na EC2 com Certbot/Let's Encrypt."""
+    _require_root()
+
+    print(f"\n{'=' * 55}")
+    print(" dpbc.py — Configuracao de HTTPS (Let's Encrypt)")
+    print(f"{'=' * 55}\n")
+
+    DOMAIN = "radiante.emaster.info"
+    EMAIL = "gustavo.cunha@emaster.info"
+
+    # 1. Instalar Certbot
+    print("[1/6] Instalando Certbot e plugin Nginx...")
+    PKG_MANAGER = _detect_pkg_manager()
+    _run([PKG_MANAGER, "install", "-y", "certbot", "python3-certbot-nginx"], capture=False)
+    print("  OK\n")
+
+    # 2. Parar Nginx container temporariamente
+    print("[2/6] Parando container Nginx para obter certificado...")
+    os.chdir(APP_DIR)
+    _run(["docker", "compose", "stop", "frontend"], capture=False)
+    print("  OK\n")
+
+    # 3. Obter certificado via standalone
+    print(f"[3/6] Obtendo certificado SSL para {DOMAIN}...")
+    r = _run([
+        "certbot", "certonly", "--standalone",
+        "-d", DOMAIN,
+        "--non-interactive", "--agree-tos",
+        "-m", EMAIL,
+    ], capture=False)
+    if r.returncode != 0:
+        print(f"  ERRO: Certbot falhou. Verifique se a porta 80 esta livre.")
+        print("  Certifique-se de que o DNS ja aponta para o IP desta EC2.")
+        sys.exit(1)
+    print("  OK\n")
+
+    # 4. Copiar certificados para volume Docker
+    print("[4/6] Copiando certificados para volume do Docker...")
+    CERTS_DIR = f"{APP_DIR}/certs"
+    _run(["mkdir", "-p", CERTS_DIR])
+    _run(["cp", "-rL", "/etc/letsencrypt/", f"{CERTS_DIR}/"])
+    _ensure_ownership()
+    print(f"  Certificados copiados para {CERTS_DIR}/")
+    print("  OK\n")
+
+    # 5. Criar webroot para renovacao
+    print("[5/6] Criando webroot para renovacao...")
+    WEBROOT_DIR = f"{APP_DIR}/certs-webroot"
+    _run(["mkdir", "-p", WEBROOT_DIR])
+    _ensure_ownership()
+    print("  OK\n")
+
+    # 6. Iniciar containers com HTTPS
+    print("[6/6] Subindo containers com HTTPS...")
+    _run(["docker", "compose", "up", "--build", "-d"], capture=False)
+    print("  OK\n")
+
+    # Renovacao automatica (usa webroot, nao precisa parar o nginx)
+    print("Configurando renovacao automatica (cron)...")
+    cron_job = "0 3 * * * certbot renew --webroot -w /var/www/certbot --quiet --post-hook 'docker exec radiante-frontend nginx -s reload'"
+    r = _run(["crontab", "-l"], capture=True)
+    existing = r.stdout if r.returncode == 0 else ""
+    if "certbot renew" not in existing:
+        _run(["bash", "-c", f'(crontab -l 2>/dev/null; echo "{cron_job}") | crontab -'])
+        print("  Rotina de renovacao agendada (03:00 diario) via webroot.")
+    else:
+        print("  Rotina de renovacao ja existente.")
+    print("  OK\n")
+
+    print(f"{'=' * 55}")
+    print(" HTTPS configurado com sucesso!")
+    print(f" Acesse: https://{DOMAIN}")
+    print(f"{'=' * 55}")
 
 
 def _setup_systemd() -> None:
@@ -367,6 +457,9 @@ def main() -> None:
   sudo python3 dpbc.py --setup
   # Quando pedir, crie o arquivo /opt/radiante/.env e rode --setup novamente
 
+  --- HTTPS (apos DNS apontar) ---
+  sudo python3 dpbc.py --ssl
+
   --- ATUALIZAR BACKEND ---
   cd /opt/radiante
   sudo python3 dpbc.py --update
@@ -382,6 +475,7 @@ def main() -> None:
     parser.add_argument("--update", action="store_true", help="Atualizar backend com git pull + rebuild")
     parser.add_argument("--status", action="store_true", help="Exibir status dos servicos")
     parser.add_argument("--logs", action="store_true", help="Exibir logs em tempo real")
+    parser.add_argument("--ssl", action="store_true", help="Configurar HTTPS com Certbot/Let's Encrypt")
     args = parser.parse_args()
 
     if args.setup:
@@ -392,6 +486,8 @@ def main() -> None:
         cmd_status()
     elif args.logs:
         cmd_logs()
+    elif args.ssl:
+        cmd_ssl()
     else:
         parser.print_help()
 

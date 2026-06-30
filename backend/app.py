@@ -128,6 +128,12 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_error(500, str(e))
 
+    def do_OPTIONS(self) -> None:
+        """Responde preflight CORS para requests cross-origin (ngrok/Amplify)."""
+        self.send_response(200)
+        self._add_cors()
+        self.end_headers()
+
     def _start_analysis(self, mode: str) -> None:
         Progress.reset(total_runs=1 if mode == "once" else 10)
         with jobs_lock:

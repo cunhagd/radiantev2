@@ -368,7 +368,7 @@
 }
 
 .help-modal {
-  background: var(--bg-surface);
+  background: #ffffff;
   border-radius: var(--radius-lg);
   width: 100%;
   max-width: 800px;
@@ -387,6 +387,7 @@
   padding: 1.5rem 2rem;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
+  background: #ffffff;
 }
 
 .help-modal-header-content {
@@ -431,6 +432,7 @@
   line-height: 1.7;
   font-size: 0.9375rem;
   color: var(--text-secondary);
+  background: #ffffff;
 }
 
 .help-loading {

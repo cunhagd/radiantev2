@@ -438,16 +438,15 @@ http://{API_DOMAIN} {{
     print(f"{'=' * 55}")
 
 
-def cmd_ngrok() -> None:
+def cmd_ngrok(token: str = "") -> None:
     """Instala e inicia tunel HTTPS via ngrok para o backend.
 
     Cria um tunel HTTPS publico (ngrok-free.app) para
     http://localhost:8000, resolvendo Mixed Content com o Amplify.
 
     Uso:
-      sudo python3 /opt/radiante/dpbc.py --ngrok
-
-    Apos executar, cole a URL gerada no API_BASE do Amplify.
+      sudo python3 /opt/radiante/dpbc.py --ngrok          # Se ja configurou o token
+      sudo python3 /opt/radiante/dpbc.py --ngrok SEU_TOKEN  # Primeira vez (criar conta em https://dashboard.ngrok.com)
     """
     _require_root()
 
@@ -475,6 +474,30 @@ def cmd_ngrok() -> None:
     else:
         print("  ngrok ja instalado.")
     print("  OK\n")
+
+    # ── 1.5 Configurar autenticacao (se token fornecido) ───────────
+    if token:
+        print("[1.5/5] Configurando token de autenticacao...")
+        r = _run(["ngrok", "config", "add-authtoken", token])
+        if r.returncode != 0:
+            print(f"  AVISO: falha ao configurar token: {r.stderr.strip()}")
+        else:
+            print("  Token configurado.")
+        print("  OK\n")
+    else:
+        # Verificar se ja tem token configurado
+        r = _run(["ngrok", "config", "check"])
+        if r.returncode != 0:
+            print()
+            print("  ⚠️  ngrok precisa de autenticacao!")
+            print()
+            print("  1. Crie uma conta gratis em: https://dashboard.ngrok.com/signup")
+            print("  2. Copie seu token em: https://dashboard.ngrok.com/get-started/your-authtoken")
+            print("  3. Execute novamente com o token:")
+            print()
+            print("     sudo python3 /opt/radiante/dpbc.py --ngrok SEU_TOKEN")
+            print()
+            sys.exit(1)
 
     # ── 2. Verificar se backend esta rodando ────────────────────────
     print("[2/5] Verificando backend...")
@@ -516,9 +539,16 @@ def cmd_ngrok() -> None:
     time.sleep(3)
     print("  OK\n")
 
-    # ── 5. Obter e exibir URL publica ──────────────────────────────
+    # ── 5. Obter e exibir URL publica (com retry) ──────────────────
     print("[5/5] Obtendo URL publica do tunel...")
-    url = _get_ngrok_url()
+    url = None
+    for attempt in range(6):
+        url = _get_ngrok_url()
+        if url:
+            break
+        if attempt < 5:
+            time.sleep(2)
+            print(f"  Aguardando tunel (tentativa {attempt + 2}/6)...")
     if url:
         print(f"\n{'=' * 55}")
         print(" TUNEL HTTPS ATIVO!")
@@ -660,7 +690,8 @@ def main() -> None:
     parser.add_argument("--status", action="store_true", help="Exibir status dos servicos")
     parser.add_argument("--logs", action="store_true", help="Exibir logs em tempo real")
     parser.add_argument("--ssl", action="store_true", help="(deprecated) Configurar HTTPS via Caddy")
-    parser.add_argument("--ngrok", action="store_true", help="Instalar e iniciar tunel HTTPS via ngrok")
+    parser.add_argument("--ngrok", nargs="?", const="", default=None,
+                        help="Instalar e iniciar tunel HTTPS via ngrok. Opcional: passar token de autenticacao.")
     parser.add_argument("--ngrok-status", action="store_true", help="Exibir URL atual do tunel ngrok")
     args = parser.parse_args()
 
@@ -674,8 +705,8 @@ def main() -> None:
         cmd_logs()
     elif args.ssl:
         cmd_ssl()
-    elif args.ngrok:
-        cmd_ngrok()
+    elif args.ngrok is not None:
+        cmd_ngrok(args.ngrok)
     elif args.ngrok_status:
         cmd_ngrok_status()
     else:

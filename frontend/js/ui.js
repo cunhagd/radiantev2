@@ -48,28 +48,10 @@ window.UI = {};
 
   async function confirmClearAll() {
     DOM.btnClear.disabled = true;
-    DOM.uploadStatus.style.color = '#60a5fa';
-    DOM.uploadStatus.textContent = 'Limpando todos os dados...';
+    closeClearModal();
 
-    try {
-      const response = await fetch(API.BASE + '/api/clear-all', { method: 'POST' });
-      if (response.ok) {
-        clearAllFrontendData();
-        DOM.uploadStatus.style.color = '#34d399';
-        DOM.uploadStatus.textContent = 'Todos os dados foram limpos com sucesso.';
-      } else {
-        DOM.uploadStatus.style.color = '#f87171';
-        DOM.uploadStatus.textContent = 'Erro ao limpar os dados.';
-      }
-    } catch (err) {
-      console.error('Erro ao limpar dados:', err);
-      DOM.uploadStatus.style.color = '#f87171';
-      DOM.uploadStatus.textContent = 'Erro de conexao ao limpar os dados.';
-    } finally {
-      closeClearModal();
-      DOM.btnClear.disabled = false;
-      setTimeout(function () { DOM.uploadStatus.textContent = ''; }, 5000);
-    }
+    // Chama o loading visual com timeline (SSE streaming)
+    await Loading.runClear();
   }
 
   function clearAllFrontendData() {

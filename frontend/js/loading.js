@@ -58,6 +58,33 @@ window.Loading = {};
     }
   }
 
+  function buildClearTimelineHTML() {
+    var steps = [
+      { id: 1, label: 'Limpando dados locais' },
+      { id: 2, label: 'Limpando S3 (docs)' },
+      { id: 3, label: 'Limpando S3 (markdown_docs)' },
+      { id: 4, label: 'Limpando S3 (results)' },
+      { id: 5, label: 'Limpando S3 (runs)' },
+      { id: 6, label: 'Resetando estado do sistema' },
+    ];
+    var h = '';
+    for (var i = 0; i < steps.length; i++) {
+      var s = steps[i];
+      var n = s.id;
+      h += '<div class="m3-step" id="m3-step-' + n + '">';
+      h += '  <div class="m3-step-visual">';
+      h += '    <div class="m3-step-dot" id="m3-dot-' + n + '"></div>';
+      if (n < 6) h += '    <div class="m3-step-line" id="m3-line-' + n + '"></div>';
+      h += '  </div>';
+      h += '  <div class="m3-step-body">';
+      h += '    <span class="m3-step-label">' + s.label + '</span>';
+      h += '    <span class="m3-step-badge is-pending" id="m3-badge-' + n + '">Aguardando</span>';
+      h += '  </div>';
+      h += '</div>';
+    }
+    return h;
+  }
+
   function buildTimelineHTML(totalRuns) {
     totalRuns = totalRuns || 10;
     var h = '';
@@ -322,6 +349,190 @@ window.Loading = {};
     }
   }
 
+  /* ------------------------------------------------------------------ */
+  /*  runClear — Loading overlay para limpeza (SSE streaming)           */
+  /* ------------------------------------------------------------------ */
+  async function runClear() {
+    var timelineContainer = qs('timeline-container');
+    var timelineEl = qs('m3-timeline');
+    var titleEl = qs('loading-title');
+    var subtitleEl = qs('loading-subtitle');
+    var timerEl = qs('loading-timer');
+
+    // Desabilita botoes
+    if (DOM.btnClear) DOM.btnClear.disabled = true;
+    DOM.btnOnce.disabled = true;
+    DOM.btnTen.disabled = true;
+
+    // Prepara timeline de limpeza
+    if (timelineEl) timelineEl.innerHTML = buildClearTimelineHTML();
+    if (timelineContainer) timelineContainer.style.display = 'block';
+    if (titleEl) titleEl.textContent = 'Limpando dados...';
+    if (subtitleEl) subtitleEl.textContent = 'Removendo arquivos e resetando o sistema';
+
+    // Timer
+    var elapsedSeconds = 0;
+    if (timerEl) timerEl.textContent = '00:00';
+    STATE.timerId = setInterval(function () {
+      elapsedSeconds++;
+      var m = Math.floor(elapsedSeconds / 60).toString().padStart(2, '0');
+      var s = (elapsedSeconds % 60).toString().padStart(2, '0');
+      if (timerEl) timerEl.textContent = m + ':' + s;
+    }, 1000);
+
+    DOM.loadingOverlay.style.display = 'flex';
+
+    try {
+      var response = await fetch(API.BASE + '/api/clear-all?stream=true', { method: 'POST' });
+
+      if (response.status === 409) {
+        var conflictData = await response.json();
+        alert(conflictData.message || 'N\u00e3o \u00e9 poss\u00edvel limpar durante uma an\u00e1lise em andamento.');
+        cleanupClear();
+        return;
+      }
+
+      if (!response.ok) {
+        alert('Erro ao iniciar a limpeza no servidor.');
+        cleanupClear();
+        return;
+      }
+
+      // Consome o stream SSE
+      await consumeClearSSE(response);
+
+    } catch (e) {
+      console.error('[CLEAR] Erro de conex\u00e3o:', e);
+      alert('Erro de conex\u00e3o ao servidor durante a limpeza.');
+      cleanupClear();
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  consumeClearSSE — Le o stream SSE e atualiza a timeline            */
+  /* ------------------------------------------------------------------ */
+  async function consumeClearSSE(response) {
+    var reader = response.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+    var currentEvent = '';
+    var hasError = false;
+
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+
+      buffer += decoder.decode(result.value, { stream: true });
+      var parts = buffer.split('\n');
+      buffer = parts.pop() || ''; // Mantem linha incompleta no buffer
+
+      for (var i = 0; i < parts.length; i++) {
+        var line = parts[i];
+
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+          try {
+            var data = JSON.parse(line.slice(6));
+            if (currentEvent === 'step') {
+              handleClearStep(data);
+              if (data.status === 'error') hasError = true;
+            } else if (currentEvent === 'complete') {
+              handleClearComplete(data, hasError);
+            }
+          } catch (err) {
+            console.error('[CLEAR] Erro ao parsear SSE:', err, line);
+          }
+        }
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  handleClearStep — Atualiza um step da timeline de limpeza          */
+  /* ------------------------------------------------------------------ */
+  function handleClearStep(data) {
+    var stepId = clearStepMap(data.step);
+    if (!stepId) return;
+
+    var sseStatus = data.status; // 'processing', 'done', 'error'
+    var timelineStatus = sseStatus === 'processing' ? 'active'
+      : sseStatus === 'done' ? 'done'
+      : 'error';
+
+    var label = qs('m3-step-' + stepId)
+      ? (qs('m3-step-' + stepId).querySelector('.m3-step-label') || {}).textContent || ''
+      : '';
+
+    var badgeText = sseStatus === 'processing'
+      ? 'Limpando...'
+      : sseStatus === 'done' ? 'Conclu\u00eddo'
+      : 'Falhou';
+
+    // Se tem nome de arquivo, mostra no badge durante processing
+    if (sseStatus === 'processing' && data.file) {
+      badgeText = data.file;
+    }
+
+    setStep(stepId, timelineStatus, label, badgeText);
+    console.log('[CLEAR] Step', data.step + ':', sseStatus, data.file || '');
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  handleClearComplete — Finaliza a timeline de limpeza               */
+  /* ------------------------------------------------------------------ */
+  function handleClearComplete(data, hasError) {
+    console.log('[CLEAR] Complete:', data.message);
+
+    // Forca todos os steps como concluidos (exceto erros)
+    for (var s = 1; s <= 6; s++) {
+      var el = qs('m3-step-' + s);
+      if (!el) continue;
+      if (!el.classList.contains('is-error')) {
+        setStep(s, 'done', '', 'Conclu\u00eddo');
+      }
+    }
+
+    var delay = hasError ? 3000 : 500;
+
+    setTimeout(function () {
+      cleanupClear();
+      UI.clearAllFrontendData();
+    }, delay);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  clearStepMap — Mapeia IDs do backend para numeros da timeline      */
+  /* ------------------------------------------------------------------ */
+  function clearStepMap(stepId) {
+    var map = {
+      local: 1,
+      s3_docs: 2,
+      s3_markdown: 3,
+      s3_results: 4,
+      s3_runs: 5,
+      reset: 6,
+    };
+    return map[stepId] || null;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  cleanupClear — Limpa o overlay de limpeza                          */
+  /* ------------------------------------------------------------------ */
+  function cleanupClear() {
+    DOM.loadingOverlay.style.display = 'none';
+
+    if (STATE.timerId) {
+      clearInterval(STATE.timerId);
+      STATE.timerId = null;
+    }
+
+    if (DOM.btnClear) DOM.btnClear.disabled = false;
+    // Restaura botoes para estado inicial (upload apenas)
+    DOM.btnOnce.disabled = true;
+    DOM.btnTen.disabled = true;
+  }
+
   Loading.runAnalysis = runAnalysis;
   Loading.cleanupLoading = cleanupLoading;
   Loading._setStep = setStep;
@@ -329,4 +540,7 @@ window.Loading = {};
   Loading._buildTimelineHTML = buildTimelineHTML;
   Loading._updateTimeline = updateTimeline;
   Loading._forceAllDone = forceAllDone;
+  Loading.runClear = runClear;
+  Loading._buildClearTimelineHTML = buildClearTimelineHTML;
+  Loading._consumeClearSSE = consumeClearSSE;
 })();

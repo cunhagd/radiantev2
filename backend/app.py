@@ -215,10 +215,34 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                 self._serve_json({"status": "error", "message": "Nao e possivel limpar durante uma analise em andamento."})
                 return
 
+        # Detecta se o cliente quer streaming SSE
+        is_stream = "stream=true" in self.path
+
         erros: list[str] = []
+        total_s3 = 0
+
+        def send_step(step_id: str, status: str, file: str | None = None, error: str | None = None, deleted_count: int | None = None) -> None:
+            if is_stream:
+                payload: dict[str, Any] = {"step": step_id, "status": status}
+                if file is not None:
+                    payload["file"] = file
+                if error is not None:
+                    payload["error"] = error
+                if deleted_count is not None:
+                    payload["deleted_count"] = deleted_count
+                self._send_sse("step", payload)
+
+        if is_stream:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
 
         # 1. Limpa diretorio local data/ (docs, markdown_docs, PDFs, JSONs, .md)
         data_root = ROOT_DIR / "data"
+        send_step("local", "processing", "data/")
         if data_root.exists():
             try:
                 import shutil
@@ -227,20 +251,55 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
                         shutil.rmtree(item)
                     elif item.suffix in (".pdf", ".json", ".md"):
                         item.unlink()
-                # Recria diretorios necessarios
                 (data_root / "docs").mkdir(parents=True, exist_ok=True)
                 (data_root / "markdown_docs").mkdir(parents=True, exist_ok=True)
+                send_step("local", "done")
             except (OSError, PermissionError) as e:
                 erros.append(f"Falha ao limpar diretorio local: {e}")
+                send_step("local", "error", file="data/", error=str(e))
 
-        # 2. Limpa bucket S3
+        # 2a. Limpa S3 docs/
+        send_step("s3_docs", "processing", "docs/")
         try:
-            total_s3 = sum(delete_files(config, p) for p in ["docs/", "markdown_docs/", "results/", "runs/"])
+            deleted = delete_files(config, "docs/")
+            total_s3 += deleted
+            send_step("s3_docs", "done", deleted_count=deleted)
         except Exception as e:
-            total_s3 = 0
-            erros.append(f"Falha ao limpar S3: {e}")
+            erros.append(f"Falha ao limpar S3 docs: {e}")
+            send_step("s3_docs", "error", file="docs/", error=str(e))
+
+        # 2b. Limpa S3 markdown_docs/
+        send_step("s3_markdown", "processing", "markdown_docs/")
+        try:
+            deleted = delete_files(config, "markdown_docs/")
+            total_s3 += deleted
+            send_step("s3_markdown", "done", deleted_count=deleted)
+        except Exception as e:
+            erros.append(f"Falha ao limpar S3 markdown_docs: {e}")
+            send_step("s3_markdown", "error", file="markdown_docs/", error=str(e))
+
+        # 2c. Limpa S3 results/
+        send_step("s3_results", "processing", "results/")
+        try:
+            deleted = delete_files(config, "results/")
+            total_s3 += deleted
+            send_step("s3_results", "done", deleted_count=deleted)
+        except Exception as e:
+            erros.append(f"Falha ao limpar S3 results: {e}")
+            send_step("s3_results", "error", file="results/", error=str(e))
+
+        # 2d. Limpa S3 runs/
+        send_step("s3_runs", "processing", "runs/")
+        try:
+            deleted = delete_files(config, "runs/")
+            total_s3 += deleted
+            send_step("s3_runs", "done", deleted_count=deleted)
+        except Exception as e:
+            erros.append(f"Falha ao limpar S3 runs: {e}")
+            send_step("s3_runs", "error", file="runs/", error=str(e))
 
         # 3. Reseta estado em memoria
+        send_step("reset", "processing")
         with jobs_lock:
             ANALYSIS_JOBS.update(
                 status="idle", message="", error_details="",
@@ -253,19 +312,51 @@ class DashboardHTTPHandler(SimpleHTTPRequestHandler):
         # 5. Limpa historico de execucao
         from backend.pipeline import clear_execution_history
         clear_execution_history()
+        send_step("reset", "done")
 
-        if erros:
-            self._serve_json({
-                "status": "partial",
-                "message": "Sistema limpo com erros parciais.",
-                "errors": erros,
-                "s3_deleted": total_s3,
-            })
+        # Resposta final
+        if is_stream:
+            if erros:
+                self._send_sse("complete", {
+                    "status": "partial",
+                    "message": "Sistema limpo com erros parciais.",
+                    "errors": erros,
+                    "s3_deleted": total_s3,
+                })
+            else:
+                self._send_sse("complete", {
+                    "status": "ok",
+                    "message": "Sistema limpo com sucesso",
+                    "s3_deleted": total_s3,
+                })
+            # Forca fechamento da conexao apos o stream SSE para evitar
+            # estado residual que corrompe requisicoes seguintes
+            self.close_connection = True
         else:
-            self._serve_json({"status": "ok", "message": "Sistema limpo com sucesso", "s3_deleted": total_s3})
+            # Modo legado (sem stream)
+            if erros:
+                self._serve_json({
+                    "status": "partial",
+                    "message": "Sistema limpo com erros parciais.",
+                    "errors": erros,
+                    "s3_deleted": total_s3,
+                })
+            else:
+                self._serve_json({"status": "ok", "message": "Sistema limpo com sucesso", "s3_deleted": total_s3})
 
     def _serve_json(self, data: dict) -> None:
         self._serve_bytes(json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+
+    def _send_sse(self, event_type: str, data: dict) -> None:
+        """Envia um evento SSE (Server-Sent Event) para o cliente.
+
+        Args:
+            event_type: Tipo do evento ('step' ou 'complete').
+            data: Dicionario com os dados do evento.
+        """
+        line = f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+        self.wfile.write(line.encode("utf-8"))
+        self.wfile.flush()
 
     def _serve_file(self, path: Path, mime: str) -> None:
         if path.exists():

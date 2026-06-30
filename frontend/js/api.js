@@ -43,7 +43,8 @@ window.API = {};
   };
 
   API.uploadFile = async function (file) {
-    return fetch(apiUrl('/api/upload'), {
+    var url = apiUrl('/api/upload');
+    return fetch(url, {
       method: 'POST',
       headers: {
         'X-Filename': encodeURIComponent(file.name),

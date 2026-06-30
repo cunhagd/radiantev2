@@ -477,7 +477,7 @@ def cmd_ngrok(token: str = "") -> None:
 
     # ── 1.5 Configurar autenticacao (se token fornecido) ───────────
     if token:
-        print("[1.5/5] Configurando token de autenticacao...")
+        print("[1.5/6] Configurando token de autenticacao...")
         r = _run(["ngrok", "config", "add-authtoken", token])
         if r.returncode != 0:
             print(f"  AVISO: falha ao configurar token: {r.stderr.strip()}")
@@ -540,7 +540,7 @@ def cmd_ngrok(token: str = "") -> None:
     print("  OK\n")
 
     # ── 5. Obter e exibir URL publica (com retry) ──────────────────
-    print("[5/5] Obtendo URL publica do tunel...")
+    print("[5/6] Obtendo URL publica do tunel...")
     url = None
     for attempt in range(6):
         url = _get_ngrok_url()
@@ -578,9 +578,59 @@ for t in d['tunnels']:
 
     print(f"{'=' * 55}")
     print(" ngrok configurado!")
-    print(f" Logs: tail -f {NGROK_LOG}")
-    print(f" Parar: sudo pkill ngrok")
+    print(f" Logs: sudo journalctl -u ngrok -f")
+    print(f" Parar: sudo systemctl stop ngrok")
+    print(f" URL: {url}" if url else f" Logs: tail -f {NGROK_LOG}")
     print(f"{'=' * 55}")
+
+    # ── 6. Configurar systemd para restart automatico ──────────────
+    print("[6/6] Configurando restart automatico (systemd)...")
+    _setup_ngrok_systemd()
+    print("  OK\n")
+
+
+def _setup_ngrok_systemd() -> None:
+    """Cria servico systemd para ngrok reiniciar automaticamente."""
+    token = ""
+    # Tenta ler token do config file do root
+    config_path = "/root/.config/ngrok/ngrok.yml"
+    if os.path.exists(config_path):
+        try:
+            with open(config_path) as f:
+                for line in f:
+                    if "authtoken" in line:
+                        token = line.split(":")[-1].strip().strip('"').strip("'")
+                        break
+        except Exception:
+            pass
+
+    authtoken_line = f"Environment=\"NGROK_AUTHTOKEN={token}\"\n" if token else ""
+
+    unit = f"""[Unit]
+Description=Ngrok Tunnel for Radiante Backend
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+{authtoken_line}ExecStart=/usr/local/bin/ngrok http 8000 --log=stdout
+ExecStop=/usr/bin/pkill ngrok
+Restart=always
+RestartSec=10
+StandardOutput=append:{NGROK_LOG}
+StandardError=append:{NGROK_LOG}
+
+[Install]
+WantedBy=multi-user.target
+"""
+    unit_path = "/etc/systemd/system/ngrok-radiante.service"
+    with open(unit_path, "w") as f:
+        f.write(unit)
+
+    _run(["systemctl", "daemon-reload"])
+    _run(["systemctl", "enable", "ngrok-radiante"])
+    _run(["systemctl", "restart", "ngrok-radiante"])
 
 
 def cmd_ngrok_status() -> None:

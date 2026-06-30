@@ -20,7 +20,10 @@ window.API = {};
   API.BASE = API_BASE;
 
   function apiUrl(endpoint) {
-    return API_BASE ? API_BASE + endpoint : endpoint;
+    if (!API_BASE) return endpoint;
+    var base = API_BASE.replace(/\/+$/, '');
+    var ep = endpoint.replace(/^\/+/, '');
+    return base + '/' + ep;
   }
 
   API.fetchJSON = async function (endpoint) {
